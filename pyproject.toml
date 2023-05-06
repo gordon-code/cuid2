@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cuid2"
+dynamic = ["version"]
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+authors = [{ name = "Overflow Digital", email = "team@overflow.digital" }]
+maintainers = [
+    { name = "Joshua Thompson-Lindley", email = "joshua@overflow.digital" },
+    { name = "Katerina Tiddy", email = "katerina@overflow.digital" }
+]
+description = "Next generation GUIDs. Collision-resistant ids optimized for horizontal scaling and performance."
+readme = "README.md"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9"
+]
+keywords = ['crypt', 'security', 'uuid', 'guid', 'cuid', 'cryptography']
+
+[project.urls]
+repository = "https://github.com/overflowdigital/cuid2.py/"
+
+[tools.setuptools]
+platforms = ["any"]
+
+[tools.setuptools.packages.find]
+where = ['src']
+include = ['cuid2*']
+
+[tool.setuptools.dynamic]
+version = { attr = "cuid2.__version__" }

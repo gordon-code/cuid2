@@ -1,0 +1,64 @@
+name: Manually Build Release
+on:
+  workflow_dispatch:
+    inputs:
+      versionNumber:
+        description: "Version number of this release"
+        required: true
+        type: string
+jobs:
+  build_release:
+    name: Build Release
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Initialize Runtime Code Analysis
+        uses: github/codeql-action/init@v2
+        with:
+          languages: python
+      - name: Setup Worker
+        run: ci/scripts/setup_worker.sh
+      - name: Increment Version Number
+        run: ci/scripts/new_version.sh ${{inputs.versionNumber}}
+      - name: Build Package and Verify
+        run: ci/scripts/build.sh
+      - name: Perform Static Code Analysis
+        run: ci/scripts/codescan.sh
+      - name: Perform Runtime Code Analysis
+        uses: github/codeql-action/analyze@v2
+      - name: Perform Secure Code Analysis (Secrets)
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.ref_name }}
+          head: HEAD
+      - name: Run Unit Tests
+        run: ci/scripts/test_runner.sh
+      - name: Upload release to PyPI
+        run: sudo python3 -m twine upload --username=__token__ --password=${{secrets.PYPI_TOKEN}} dist/*
+      - name: Create GitHub Release
+        run: gh release create v${{inputs.versionNumber}} --latest --generate-notes dist/*
+        env:
+          GITHUB_TOKEN: ${{secrets.GH_TOKEN}}
+      - name: Upload Test Report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: unit-test-report
+          path: |
+            /home/runner/work/cuid2py/cuid2/ci/tests/report.xml
+            /home/runner/work/cuid2py/cuid2/ci/tests/coverage.xml
+            /home/runner/work/cuid2py/cuid2/ci/tests/pytest.log
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: cuid2py
+          path: /home/runner/work/cuid2py/dist
+          if-no-files-found: ignore
+          retention-days: 1
