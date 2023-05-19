@@ -9,11 +9,10 @@ on:
 jobs:
   test-lint-scan:
     uses: ./.github/workflows/test_lint_scan.yml
-    secrets:
-      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
   build_release:
     name: Build Release
+    needs: test-lint-scan
     permissions:
       # IMPORTANT: this permission is mandatory for trusted publishing
       id-token: write

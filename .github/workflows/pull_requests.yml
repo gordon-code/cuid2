@@ -12,5 +12,3 @@ on:
 jobs:
   test-lint-scan:
     uses: ./.github/workflows/test_lint_scan.yml
-    secrets:
-      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
