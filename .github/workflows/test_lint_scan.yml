@@ -1,9 +1,7 @@
 name: Test - Lint - Scan
 on:
-  workflow_call:
-    secrets:
-      SNYK_TOKEN:
-        required: true
+  workflow_call: {}
+  workflow_dispatch: {}
 
 jobs:
   test:
@@ -11,7 +9,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: [3.8, 3.9, 3.10, 3.11]
+        python-version: [3.8, 3.9, "3.10", 3.11]
 
     runs-on: ${{ matrix.os }}
 
@@ -23,7 +21,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
-          pdm install -dG :all --no-self
+          pdm install -dG :all
       - name: Run Testing
         run: |
           pdm run -v testing
@@ -51,12 +49,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-      - name: Initialize Runtime Code Analysis
-        uses: github/codeql-action/init@v2
-        with:
-          languages: python
-      - name: Setup snyk CLI
-        uses: snyk/actions/setup@master
       - name: Set up PDM
         uses: pdm-project/setup-pdm@v3
         with:
@@ -64,15 +56,19 @@ jobs:
       - name: Install dependencies
         run: |
           pdm install -dG :all --no-self
+          # Set the `CODEQL-PYTHON` environment variable to the Python executable
+          # that includes the dependencies
+          echo "CODEQL_PYTHON=$(pdm info --python)" >> $GITHUB_ENV
+      - name: Initialize Runtime Code Analysis
+        uses: github/codeql-action/init@v2
+        with:
+          languages: python
+          setup-python-dependencies: false
       - name: Perform Runtime Code Analysis
         uses: github/codeql-action/analyze@v2
       - name: Perform Secure Code Analysis (Secrets)
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: ${{ github.ref_name }}
+          base: ${{ github.event.repository.default_branch }}
           head: HEAD
-      - name: Snyk monitor
-        run: snyk test
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
