@@ -1,14 +1,18 @@
-# cuid2.py
+# cuid2
 
-[![Python](https://img.shields.io/badge/python-3.6.1-blue.svg)](https://img.shields.io/badge/python-3.6.1-blue.svg)
+[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://img.shields.io/badge/python-3.8+-blue.svg)
 [![PyPi](https://img.shields.io/pypi/v/cuid2.svg)](https://pypi.python.org/pypi/cuid2)
 [![PyPi](https://img.shields.io/pypi/dm/cuid2.svg)](https://pypi.python.org/pypi/cuid2)
 [![cuid2](https://snyk.io/advisor/python/cuid2/badge.svg)](https://snyk.io/advisor/python/cuid2)
 
-CUID2 for Python 3. Next generation GUIDs. Collision-resistant ids optimized for horizontal scaling and performance.
+CUID2 for Python 3. Next generation GUIDs. Collision-resistant ids optimized for 
+horizontal scaling and performance.
 
-A port of the [CUID2 reference implementation](https://github.com/paralleldrive/cuid2) by [Parallel Drive](https://github.com/paralleldrive) to Python 3.
+A port of the [CUID2 reference implementation](https://github.com/paralleldrive/cuid2) 
+by [Parallel Drive](https://github.com/paralleldrive) to Python 3.
 
+> :memo: Note: Originally taken from https://github.com/overflowdigital before it 
+> was unpublished. Thank you to @joshuathompsonlindley for your original contribution!
 
 ## What is CUID2?
 
@@ -20,11 +24,13 @@ A port of the [CUID2 reference implementation](https://github.com/paralleldrive/
 
 ## Why?
 
-For more information on the theory and usage of CUID2, see the [following](https://github.com/paralleldrive/cuid2#why).
+For more information on the theory and usage of CUID2, see the 
+[following](https://github.com/paralleldrive/cuid2#why).
 
 ## Improvements Over CUID
 
-For more information on the improvements of CUID2 over CUID, see the [following](https://github.com/paralleldrive/cuid2#improvements-over-cuid).
+For more information on the improvements of CUID2 over CUID, see the 
+[following](https://github.com/paralleldrive/cuid2#improvements-over-cuid).
 
 
 ## Install
@@ -35,9 +41,11 @@ pip install cuid2
 ## Usage
 You can generate CUIDs with the following:
 ```python
-from cuid2 import cuid
+from cuid2 import Cuid
+
+CUID_GENERATOR: Cuid = Cuid()
 
 def main():
-  my_cuid: str = cuid()
+  my_cuid: str = CUID_GENERATOR.generate()
+  next_cuid: str = CUID_GENERATOR.generate()
 ```
-

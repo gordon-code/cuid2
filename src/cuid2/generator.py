@@ -1,58 +1,111 @@
-import hashlib
-import os
-import socket
-from random import SystemRandom
+import time
+import warnings
+from math import floor
+from secrets import SystemRandom
+from typing import TYPE_CHECKING, Any, Callable, Dict, Final, Optional, Protocol, Tuple, Type
 
-from cuid2.utils import base36_encode, pad_string, string_to_int
+from cuid2 import utils
 
+if TYPE_CHECKING:
+    from _random import Random
 
-def generate_entropy(length: int = 4) -> str:
-    entropy: str = ''
-    primes: list[int] = [109717, 109721, 109741, 109751, 109789, 109793, 109807, 109819, 109829, 109831]
-    generator: SystemRandom = SystemRandom()
-
-    while len(entropy) < length:
-        prime: int = primes[int(generator.random() * len(primes))]
-        entropy += base36_encode(int(generator.random() * prime))
-
-    return entropy
+    class FingerprintCallable(Protocol):  # pylint: disable=too-few-public-methods
+        def __call__(self: "FingerprintCallable", random_generator: Random) -> str:
+            ...
 
 
-def generate_hash(data: str = '', length: int = 32) -> str:
-    sha3_512: hashlib._Hash = hashlib.sha3_512()
-    raw_data: bytes = (data + generate_entropy(length)).encode()
-
-    sha3_512.update(raw_data)
-
-    hash_result: str = sha3_512.hexdigest()
-
-    hash_result = hash_result.lstrip('0x')
-    hash_result = hash_result.split('L', maxsplit=1)[0]
-
-    result: int = string_to_int(hash_result)
-
-    return base36_encode(result)
+# ~22k hosts before 50% chance of initial counter collision
+# with a remaining counter range of 9.0e+15 in JavaScript.
+INITIAL_COUNT_MAX: Final[int] = 476782367
+DEFAULT_LENGTH: Final = 24
+MAXIMUM_LENGTH: Final = 98
 
 
-def generate_fingerprint() -> str:
-    generator: SystemRandom = SystemRandom()
+class Cuid:  # pylint: disable=too-few-public-methods
+    def __init__(
+        self: "Cuid",
+        random_generator: Callable[[], "Random"] = SystemRandom,
+        counter: Callable[[int], Callable[[], int]] = utils.create_counter,
+        length: int = DEFAULT_LENGTH,
+        fingerprint: "FingerprintCallable" = utils.create_fingerprint,
+    ) -> None:
+        """Initialization function for the Cuid class that generates a universally unique,
+        base36 encoded string.
 
-    process_id_hash: str = base36_encode(os.getpid())
-    process_id_hash = pad_string(process_id_hash, 2)
+        Parameters
+        ----------
+        random_generator : Callable[[], "Random"], default=SystemRandom
+            Used as the base random generator. The default value is `secrets.SystemRandom`, which is a
+            cryptographically secure random number generator provided by the Python standard library.
+        counter : Callable[[int], Callable[[], int]], default=utils.create_counter
+            The `counter` parameter is a callable that creates a counter returning an incremented value each time it
+            is called. The `create_counter` function from the `utils` module is used by default.
+        length : int, default=DEFAULT_LENGTH (4)
+            The length parameter is an integer that determines the maximum length of the generated string.
+            It has a default value of DEFAULT_LENGTH (4).
+            A length value greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
+        fingerprint : "FingerprintCallable", default=utils.create_fingerprint
+            The "fingerprint" parameter is a callable function that generates a unique identifier.
 
-    process_id: int = string_to_int(process_id_hash)
-    raw_hostname: str = socket.gethostname()
-    entropy: int = int(generator.random() + 1) * 2063
+        Raises
+        ------
+        ValueError
+            If the length parameter is greater than `MAXIMUM_LENGTH` (98 characters).
+        """
+        if length > MAXIMUM_LENGTH:
+            msg = "Length must never exceed 98 characters."
+            raise ValueError(msg)
 
-    hostname: int = sum(ord(c) for c in str(raw_hostname))
-    hostname_hash: str = base36_encode(hostname + len(raw_hostname) + 36)
+        self._random: "Random" = random_generator()
+        self._counter: Callable[[], int] = counter(floor(self._random.random() * INITIAL_COUNT_MAX))
+        self._length: int = length
+        self._fingerprint: str = fingerprint(random_generator=self._random)
 
-    hostname_hash = pad_string(hostname_hash, 2)
-    hostname = string_to_int(hostname_hash)
+    def generate(self: "Cuid", length: Optional[int] = None) -> str:
+        """Generates a universally unique, base36 encoded string with a specified length.
 
-    fingerprint: str = str(entropy + process_id + hostname)
-    fingerprint = generate_hash(fingerprint)
+        Parameters
+        ----------
+        length : int, optional
+            The length parameter is an optional integer value that specifies the length of the generated string.
+            If it is not provided, the default length value provided during class initialization is used.
+            A length value greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
 
-    result: int = string_to_int(fingerprint)
+        Returns
+        -------
+        str
+            Starts with a single, random letter, followed by a hash. The hash is generated using a combination of
+            the current time in base 36, a random salt, a base 36 counter, and a system fingerprint.
+            The length of the returned string is limited by `length`.
 
-    return base36_encode(result)
+        Raises
+        ------
+        ValueError
+            If the length parameter is greater than `MAXIMUM_LENGTH` (98 characters).
+        """
+        length = length or self._length
+        if length > MAXIMUM_LENGTH:
+            msg = "Length must never exceed 98 characters."
+            raise ValueError(msg)
+
+        first_letter: str = utils.create_letter(random_generator=self._random)
+
+        base36_time: str = utils.base36_encode(time.time_ns())
+        base36_count: str = utils.base36_encode(self._counter())
+
+        salt: str = utils.create_entropy(length=length, random_generator=self._random)
+        hash_input: str = base36_time + salt + base36_count + self._fingerprint
+
+        return first_letter + utils.create_hash(hash_input)[1 : length or self._length]
+
+
+class CUID(Cuid):  # pylint: disable=too-few-public-methods
+    def __init_subclass__(cls: Type["CUID"], **kwargs: Dict[str, Any]) -> None:
+        """Deprecated class CUID. Use Cuid instead."""
+        warnings.warn("CUID is deprecated, use Cuid instead", DeprecationWarning, stacklevel=1)
+        super().__init_subclass__(**kwargs)
+
+    def __new__(cls: Type["CUID"], *args: Tuple[Any, ...], **kwargs: Dict[str, Any]) -> "CUID":
+        """Deprecated class CUID. Use Cuid instead."""
+        warnings.warn("CUID is deprecated, use Cuid instead", DeprecationWarning, stacklevel=1)
+        return super().__new__(cls, *args, **kwargs)

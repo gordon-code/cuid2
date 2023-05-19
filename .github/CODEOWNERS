@@ -1,5 +1,5 @@
-* @joshuathompsonlindley @katerinatiddy
-/ci/ @joshuathompsonlindley
-*.py @joshuathompsonlindley
-.cfg @joshuathompsonlindley
-.toml @joshuathompsonlindley
+* @wgordon17
+/local/ @wgordon17
+*.py @wgordon17
+.cfg @wgordon17
+.toml @wgordon17

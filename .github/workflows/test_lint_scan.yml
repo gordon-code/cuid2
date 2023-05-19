@@ -1,0 +1,78 @@
+name: Test - Lint - Scan
+on:
+  workflow_call:
+    secrets:
+      SNYK_TOKEN:
+        required: true
+
+jobs:
+  test:
+    name: Testing
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: [3.8, 3.9, 3.10, 3.11]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up PDM
+        uses: pdm-project/setup-pdm@v3
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          pdm install -dG :all --no-self
+      - name: Run Testing
+        run: |
+          pdm run -v testing
+
+  lint:
+    name: Linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up PDM
+        uses: pdm-project/setup-pdm@v3
+        with:
+          python-version: 3.11
+      - name: Install dependencies
+        run: |
+          pdm install -dG :all --no-self
+      - name: Run Linting
+        run: |
+          pdm run -v lint-full
+
+  scan:
+    name: Scanning
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Initialize Runtime Code Analysis
+        uses: github/codeql-action/init@v2
+        with:
+          languages: python
+      - name: Setup snyk CLI
+        uses: snyk/actions/setup@master
+      - name: Set up PDM
+        uses: pdm-project/setup-pdm@v3
+        with:
+          python-version: 3.11
+      - name: Install dependencies
+        run: |
+          pdm install -dG :all --no-self
+      - name: Perform Runtime Code Analysis
+        uses: github/codeql-action/analyze@v2
+      - name: Perform Secure Code Analysis (Secrets)
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.ref_name }}
+          head: HEAD
+      - name: Snyk monitor
+        run: snyk test
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}

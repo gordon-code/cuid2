@@ -1,5 +1,0 @@
-[pytest]
-junit_logging=all
-junit_suite_name=cuid2pyTestSuite
-filterwarnings=
-    ignore:DeprecationWarning
