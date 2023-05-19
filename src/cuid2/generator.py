@@ -1,8 +1,7 @@
 import time
-import warnings
 from math import floor
 from secrets import SystemRandom
-from typing import TYPE_CHECKING, Any, Callable, Dict, Final, Optional, Protocol, Tuple, Type
+from typing import TYPE_CHECKING, Callable, Final, Optional, Protocol
 
 from cuid2 import utils
 
@@ -99,13 +98,17 @@ class Cuid:  # pylint: disable=too-few-public-methods
         return first_letter + utils.create_hash(hash_input)[1 : length or self._length]
 
 
-class CUID(Cuid):  # pylint: disable=too-few-public-methods
-    def __init_subclass__(cls: Type["CUID"], **kwargs: Dict[str, Any]) -> None:
-        """Deprecated class CUID. Use Cuid instead."""
-        warnings.warn("CUID is deprecated, use Cuid instead", DeprecationWarning, stacklevel=1)
-        super().__init_subclass__(**kwargs)
+def cuid_wrapper() -> Callable[[], str]:
+    """Wrap a single Cuid class instance and return a callable that generates a CUID string.
 
-    def __new__(cls: Type["CUID"], *args: Tuple[Any, ...], **kwargs: Dict[str, Any]) -> "CUID":
-        """Deprecated class CUID. Use Cuid instead."""
-        warnings.warn("CUID is deprecated, use Cuid instead", DeprecationWarning, stacklevel=1)
-        return super().__new__(cls, *args, **kwargs)
+    Returns
+    -------
+    Callable[[], str]
+        A callable that generates a CUID string.
+    """
+    cuid_generator: Cuid = Cuid()
+
+    def cuid() -> str:
+        return cuid_generator.generate()
+
+    return cuid
