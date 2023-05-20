@@ -10,7 +10,9 @@ jobs:
     uses: ./.github/workflows/test_lint_scan.yml
 
   collision-test:
-    runs-on: macos-latest-xl
+    runs-on:
+      - self-hosted
+      - macos-local
 
     steps:
       - uses: actions/checkout@v3
