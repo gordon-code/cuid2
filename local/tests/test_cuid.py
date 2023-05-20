@@ -1,11 +1,11 @@
 from math import floor
 from secrets import SystemRandom
 from timeit import repeat
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import pytest
 
-from cuid2 import CUID, DEFAULT_LENGTH, INITIAL_COUNT_MAX, Cuid
+from cuid2 import DEFAULT_LENGTH, INITIAL_COUNT_MAX, Cuid, cuid_wrapper
 
 if TYPE_CHECKING:
     from unittest.mock import Mock
@@ -163,15 +163,28 @@ class TestCuid:
         assert len(result) == DEFAULT_LENGTH
         assert result == "l9j3ikop1bi8tcvzme3x3yv7"
 
-    # Tests that instantiating the CUID class provides a deprecation warning.
-    def test_constructor_deprecation_warning(self: "TestCuid") -> None:
-        with pytest.deprecated_call():
-            cuid = CUID()
-            assert isinstance(cuid, Cuid)
 
-    # Tests that subclassing the CUID class provides a deprecation warning.
-    def test_subclass_deprecation_warning(self: "TestCuid") -> None:
-        with pytest.deprecated_call():
+class TestCuidWrapper:
+    def test_cuid_wrapper_is_callable(self: "TestCuidWrapper") -> None:
+        """Tests that the function returns a callable."""
+        cuid_func: Callable[[], str] = cuid_wrapper()
+        assert callable(cuid_func)
 
-            class CuidSubclass(CUID):
-                pass
+    def test_cuid_wrapper_return_type(self: "TestCuidWrapper") -> None:
+        """Tests that the function returns a callable that generates a CUID string."""
+        cuid_func: Callable[[], str] = cuid_wrapper()
+        assert isinstance(cuid_func(), str)
+
+    def test_cuid_wrapper_no_parameters(self: "TestCuidWrapper") -> None:
+        """Tests that the function doesn't accept any parameters."""
+        cuid_func: Callable[[], str] = cuid_wrapper()
+        with pytest.raises(
+            TypeError,
+            match="cuid\\(\\) takes 0 positional arguments but 1 was given",
+        ):
+            cuid_func(DEFAULT_LENGTH)  # type: ignore[call-arg]
+
+    def test_cuid_wrapper_length(self: "TestCuidWrapper") -> None:
+        """Tests that the function returns a callable that generates a CUID string with the default length."""
+        cuid_func: Callable[[], str] = cuid_wrapper()
+        assert len(cuid_func()) == DEFAULT_LENGTH

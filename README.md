@@ -39,11 +39,29 @@ pip install cuid2
 ```
 
 ## Usage
-You can generate CUIDs with the following:
+
+You can generate CUIDs directly in the terminal with the following:
+```bash
+$ cuid2
+```
+
+Or you can rely on a CUID wrapper if you don't need any customizations:
+```python
+from typing import Callable
+from cuid2 import cuid_wrapper
+
+cuid_generator: Callable[[], str] = cuid_wrapper()
+
+def main():
+  my_cuid: str = cuid_generator()
+  next_cuid: str = cuid_generator()
+```
+
+Finally, for more explicit control of the CUID generator, you can instantiate the class directly:
 ```python
 from cuid2 import Cuid
 
-CUID_GENERATOR: Cuid = Cuid()
+CUID_GENERATOR: Cuid = Cuid(length=10)
 
 def main():
   my_cuid: str = CUID_GENERATOR.generate()

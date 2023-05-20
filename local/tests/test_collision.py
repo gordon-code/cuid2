@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, Iterable
 
 import pytest
 
-from cuid2 import CUID
+from cuid2 import Cuid
 
 
 def cuid_generator(max_ids: int) -> Dict[str, Any]:
@@ -31,7 +31,7 @@ def cuid_generator(max_ids: int) -> Dict[str, Any]:
     def _id_to_int(value: str, radix: int = str_base) -> int:
         return reduce(lambda r, v: r * radix + int(v, radix), value, 0)
 
-    cuid: Callable[[], str] = CUID().generate
+    cuid: Callable[[], str] = Cuid().generate
     bucket_count: int = 20
 
     result: dict[str, Any] = {

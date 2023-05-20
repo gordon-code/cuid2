@@ -1,0 +1,26 @@
+name: Continuous Integration
+on:
+  workflow_dispatch: {}
+  schedule:
+    # Weekly every Saturday at midnight
+    - cron: '0 0 * * 6'
+
+jobs:
+  test-lint-scan:
+    uses: ./.github/workflows/test_lint_scan.yml
+
+  collision-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up PDM
+        uses: pdm-project/setup-pdm@v3
+        with:
+          python-version: 3.11
+      - name: Install dependencies
+        run: |
+          pdm install -dG test
+      - name: Run Testing
+        run: |
+          pdm run -v testing-slow
