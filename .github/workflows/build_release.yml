@@ -32,4 +32,4 @@ jobs:
       - name: Create GitHub Release
         run: gh release create v${{inputs.versionNumber}} --latest --generate-notes dist/*
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
