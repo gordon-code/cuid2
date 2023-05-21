@@ -16,10 +16,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-      - name: Set up PDM
-        uses: pdm-project/setup-pdm@v3
-        with:
-          python-version: 3.11
       - name: Install dependencies
         run: |
           pdm install -dG test
