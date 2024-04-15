@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections import Counter
 from functools import reduce
 from math import ceil, floor
@@ -42,7 +44,7 @@ def cuid_generator(max_ids: int) -> Dict[str, Any]:
 
     bucket_length: int = ceil(str_base**23 / bucket_count)
 
-    for _ in range(0, max_ids):
+    for _ in range(max_ids):
         uid: str = cuid()
         result["ids"].add(uid)
         result["id_histogram"][_id_to_int(uid[1:]) // bucket_length] += 1
