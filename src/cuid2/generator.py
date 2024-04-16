@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import time
 from math import floor
 from secrets import SystemRandom
@@ -9,8 +11,7 @@ if TYPE_CHECKING:
     from _random import Random
 
     class FingerprintCallable(Protocol):  # pylint: disable=too-few-public-methods
-        def __call__(self: "FingerprintCallable", random_generator: Random) -> str:
-            ...
+        def __call__(self: FingerprintCallable, random_generator: Random) -> str: ...
 
 
 # ~22k hosts before 50% chance of initial counter collision
@@ -22,11 +23,11 @@ MAXIMUM_LENGTH: Final = 98
 
 class Cuid:  # pylint: disable=too-few-public-methods
     def __init__(
-        self: "Cuid",
-        random_generator: Callable[[], "Random"] = SystemRandom,
+        self: Cuid,
+        random_generator: Callable[[], Random] = SystemRandom,
         counter: Callable[[int], Callable[[], int]] = utils.create_counter,
         length: int = DEFAULT_LENGTH,
-        fingerprint: "FingerprintCallable" = utils.create_fingerprint,
+        fingerprint: FingerprintCallable = utils.create_fingerprint,
     ) -> None:
         """Initialization function for the Cuid class that generates a universally unique,
         base36 encoded string.
@@ -55,12 +56,12 @@ class Cuid:  # pylint: disable=too-few-public-methods
             msg = "Length must never exceed 98 characters."
             raise ValueError(msg)
 
-        self._random: "Random" = random_generator()
+        self._random: Random = random_generator()
         self._counter: Callable[[], int] = counter(floor(self._random.random() * INITIAL_COUNT_MAX))
         self._length: int = length
         self._fingerprint: str = fingerprint(random_generator=self._random)
 
-    def generate(self: "Cuid", length: Optional[int] = None) -> str:
+    def generate(self: Cuid, length: Optional[int] = None) -> str:
         """Generates a universally unique, base36 encoded string with a specified length.
 
         Parameters

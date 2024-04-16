@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import socket
 import string
@@ -46,7 +48,7 @@ def create_counter(count: int) -> Callable[[], int]:
     return counter
 
 
-def create_fingerprint(random_generator: "Random", fingerprint_data: Optional[str] = "") -> str:
+def create_fingerprint(random_generator: Random, fingerprint_data: Optional[str] = "") -> str:
     """Creates a fingerprint, by default combining process ID, hostname, and environment variables
     with entropy and then hashing the result.
 
@@ -76,7 +78,7 @@ def create_fingerprint(random_generator: "Random", fingerprint_data: Optional[st
     return create_hash(fingerprint)[0:BIG_LENGTH]
 
 
-def create_entropy(random_generator: "Random", length: int = 4) -> str:
+def create_entropy(random_generator: Random, length: int = 4) -> str:
     """Creates a random string of specified length using a base36 encoding.
 
     Parameters
@@ -126,14 +128,14 @@ def create_hash(data: str = "") -> str:
         Base36 encoding of the SHA-512 hash of the input string `data`, with the first character dropped.
 
     """
-    hashed_value: "_Hash" = sha512(data.encode())
+    hashed_value: _Hash = sha512(data.encode())
     hashed_int: int = int.from_bytes(hashed_value.digest(), byteorder="big")
 
     # Drop the first character because it will bias the histogram to the left.
     return base36_encode(hashed_int)[1:]
 
 
-def create_letter(random_generator: "Random") -> str:
+def create_letter(random_generator: Random) -> str:
     """Generates a random lowercase letter using a given random number generator.
 
     Parameters
