@@ -65,5 +65,7 @@ jobs:
           languages: python
       - name: Perform Runtime Code Analysis
         uses: github/codeql-action/analyze@v3
+        env:
+          CODEQL_EXTRACTOR_PYTHON_ANALYSIS_VERSION: 3.12
       - name: Perform Secure Code Analysis (Secrets)
         uses: trufflesecurity/trufflehog@main
