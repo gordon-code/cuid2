@@ -14,15 +14,17 @@ jobs:
     name: Build Release
     needs: test-lint-scan
     permissions:
-      # IMPORTANT: this permission is mandatory for trusted publishing
+      # IMPORTANT: this permission is mandatory for trusted publishing to pypi
       id-token: write
+      # This permissions is necessary for creating the GitHub release
+      contents: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Set up PDM
-        uses: pdm-project/setup-pdm@v3
+        uses: pdm-project/setup-pdm@v4
         with:
-          python-version: 3.11
+          python-version: 3.12
       - name: Build Release
         run: pdm build
         env:
@@ -31,5 +33,3 @@ jobs:
         run: pdm publish --no-build
       - name: Create GitHub Release
         run: gh release create v${{inputs.versionNumber}} --latest --generate-notes dist/*
-        env:
-          GH_TOKEN: ${{ github.token }}
