@@ -155,7 +155,7 @@ def create_letter(random_generator: Random, alphabet: Optional[str] = None) -> s
         a randomly generated lowercase letter from the English alphabet.
     """
     if not alphabet:
-        alphabet: str = string.ascii_lowercase
+        alphabet = string.ascii_lowercase
     return alphabet[floor(random_generator.random() * len(alphabet))]
 
 
@@ -222,7 +222,7 @@ def custom_base_encode(number: int, alphabet = Optional[str]) -> str:
 
     encoded_string: str = ""
     if alphabet is None:
-        alphabet: str = string.digits + string.ascii_lowercase
+        alphabet = string.digits + string.ascii_lowercase
     alphabet_length: int = len(alphabet)
 
     while number != 0:
