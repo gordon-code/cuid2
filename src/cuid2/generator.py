@@ -99,7 +99,7 @@ class Cuid:  # pylint: disable=too-few-public-methods
         return first_letter + utils.create_hash(hash_input)[1 : length or self._length]
 
 
-def cuid_wrapper() -> Callable[[], str]:
+def cuid_wrapper(length: Optional[int] = None) -> Callable[[], str]:
     """Wrap a single Cuid class instance and return a callable that generates a CUID string.
 
     Returns
@@ -110,6 +110,6 @@ def cuid_wrapper() -> Callable[[], str]:
     cuid_generator: Cuid = Cuid()
 
     def cuid() -> str:
-        return cuid_generator.generate()
+        return cuid_generator.generate(length)
 
     return cuid
