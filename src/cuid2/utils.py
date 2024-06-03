@@ -193,7 +193,7 @@ def create_letter(random_generator: Random, alphabet: Optional[str] = None) -> s
 
 #     return encoded_string or "0"
 
-def custom_base_encode(number: int, alphabet = Optional[str] = None) -> str:
+def custom_base_encode(number: int, alphabet: Optional[str] = None) -> str:
     """Encodes a positive integer into a string with the provided alphabet.
 
     Parameters
