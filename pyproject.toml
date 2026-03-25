@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Next generation GUIDs. Collision-resistant ids optimized for horizontal scaling and performance."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = "==3.14.3"
 license = {file = "LICENSE"}
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -51,24 +51,24 @@ tox = "tox --parallel auto"
 
 [tool.pdm.dev-dependencies]
 lint = [
-    "codespell~=2.2.6",  #  https://github.com/codespell-project/codespell  (latest:  2.2.6)
-    "pylint~=3.1.0",     #  https://github.com/pylint-dev/pylint            (latest:  3.1.0)
-    "requests>=2.31.0",  #  https://github.com/psf/requests                 (latest:  2.31.0)
-    "ruff~=0.3.7",       #  https://github.com/astral-sh/ruff               (latest:  0.3.7)
+    "codespell==2.2.6",  #  https://github.com/codespell-project/codespell  (latest:  2.2.6)
+    "pylint==3.1.0",     #  https://github.com/pylint-dev/pylint            (latest:  3.1.0)
+    "requests==2.31.0",  #  https://github.com/psf/requests                 (latest:  2.31.0)
+    "ruff==0.3.7",       #  https://github.com/astral-sh/ruff               (latest:  0.3.7)
     "safety==3.1.0",     #  https://github.com/pyupio/safety                (latest:  3.1.0)
 ]
 test = [
-    "pytest~=8.1.1",        #  https://github.com/pytest-dev/pytest        (latest:  8.1.1)
-    "pytest-mock~=3.14.0",  #  https://github.com/pytest-dev/pytest-mock/  (latest:  3.14.0)
-    "pytest-sugar~=1.0.0",  #  https://github.com/Teemu/pytest-sugar       (latest:  1.0.0)
+    "pytest==8.1.1",        #  https://github.com/pytest-dev/pytest        (latest:  8.1.1)
+    "pytest-mock==3.14.0",  #  https://github.com/pytest-dev/pytest-mock/  (latest:  3.14.0)
+    "pytest-sugar==1.0.0",  #  https://github.com/Teemu/pytest-sugar       (latest:  1.0.0)
 ]
 tox = [
     # Version reduced to prevent `packaging` conflict with safety
-    "tox~=4.14.2",     #  https://github.com/tox-dev/tox          (latest:  4.14.2)
-    "tox-pdm~=0.7.2",  #  https://github.com/pdm-project/tox-pdm  (latest:  0.7.2)
+    "tox==4.14.2",     #  https://github.com/tox-dev/tox          (latest:  4.14.2)
+    "tox-pdm==0.7.2",  #  https://github.com/pdm-project/tox-pdm  (latest:  0.7.2)
 ]
 typing = [
-    "mypy~=1.9.0",  #  https://github.com/python/mypy  (latest:  1.9.0)
+    "mypy==1.9.0",  #  https://github.com/python/mypy  (latest:  1.9.0)
 ]
 
 [tool.tox]
