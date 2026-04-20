@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import re
 from math import floor
 from secrets import SystemRandom
 from typing import TYPE_CHECKING, Callable, Final, Optional, Protocol
@@ -57,7 +58,9 @@ class Cuid:  # pylint: disable=too-few-public-methods
             raise ValueError(msg)
 
         self._random: Random = random_generator()
-        self._counter: Callable[[], int] = counter(floor(self._random.random() * INITIAL_COUNT_MAX))
+        self._counter: Callable[[], int] = counter(
+            floor(self._random.random() * INITIAL_COUNT_MAX)
+        )
         self._length: int = length
         self._fingerprint: str = fingerprint(random_generator=self._random)
 
@@ -97,6 +100,42 @@ class Cuid:  # pylint: disable=too-few-public-methods
         hash_input: str = base36_time + salt + base36_count + self._fingerprint
 
         return first_letter + utils.create_hash(hash_input)[1 : length or self._length]
+
+    @staticmethod
+    def is_cuid(id: str, min_length: int = 2, max_length: Optional[int] = None) -> bool:
+        """
+        Check if the given id is a CUID.
+        Port on 2025-02-12 from: https://github.com/paralleldrive/cuid2/blob/main/src/index.js
+
+        :param id: The id to check.
+        :param min_length: The minimum length of the id.
+        :param max_length: The maximum length of the id.
+        :return: True if the id is a CUID, False otherwise.
+
+        # Example usage
+        # print(is_cuid("1"))  # False
+        # print(is_cuid("cjld2cjxh0000qzrmn831i7rn"))  # True
+        """
+        if max_length is None:
+            max_length = float(
+                "inf"
+            )  # Set max_length to a very large number if not provided
+
+        length = len(id)
+        regex = re.compile(r"^[a-z][0-9a-z]+$")
+
+        try:
+            if (
+                isinstance(id, str)
+                and length >= min_length
+                and length <= max_length
+                and regex.match(id)
+            ):
+                return True
+        finally:
+            pass
+
+        return False
 
 
 def cuid_wrapper() -> Callable[[], str]:
