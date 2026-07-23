@@ -14,7 +14,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Set up PDM
         uses: pdm-project/setup-pdm@v4
         with:
@@ -65,4 +65,4 @@ jobs:
         env:
           CODEQL_EXTRACTOR_PYTHON_ANALYSIS_VERSION: 3.12
       - name: Perform Secure Code Analysis (Secrets)
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@05a583290be8c8f79852eb8741f5042920b47d00 # main
