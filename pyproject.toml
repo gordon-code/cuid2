@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Next generation GUIDs. Collision-resistant ids optimized for horizontal scaling and performance."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {file = "LICENSE"}
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -54,10 +54,10 @@ lint = [
     "pylint~=3.1.0",     #  https://github.com/pylint-dev/pylint            (latest:  3.1.0)
     "requests>=2.31.0",  #  https://github.com/psf/requests                 (latest:  2.31.0)
     "ruff~=0.3.7",       #  https://github.com/astral-sh/ruff               (latest:  0.3.7)
-    "safety==3.1.0",     #  https://github.com/pyupio/safety                (latest:  3.1.0)
+    "safety==3.8.1",     #  https://github.com/pyupio/safety                (latest:  3.8.1)
 ]
 test = [
-    "pytest~=8.1.1",        #  https://github.com/pytest-dev/pytest        (latest:  8.1.1)
+    "pytest~=9.1.1",        #  https://github.com/pytest-dev/pytest        (latest:  9.1.1)
     "pytest-mock~=3.14.0",  #  https://github.com/pytest-dev/pytest-mock/  (latest:  3.14.0)
     "pytest-sugar~=1.0.0",  #  https://github.com/Teemu/pytest-sugar       (latest:  1.0.0)
 ]
@@ -74,7 +74,7 @@ typing = [
 legacy_tox_ini = """
     [tox]
     min_version = 4
-    env_list = py3{9,10,11,12}, check
+    env_list = py3{10,11,12}, check
     work_dir = local/.tox
     isolated_build = True
 
@@ -93,7 +93,7 @@ legacy_tox_ini = """
 [tool.ruff]
 line-length = 120
 src = ["src"]
-target-version = "py39"
+target-version = "py310"
 cache-dir = "local/.ruff_cache"
 force-exclude = true
 
