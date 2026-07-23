@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Next generation GUIDs. Collision-resistant ids optimized for horizontal scaling and performance."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {file = "LICENSE"}
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -74,7 +74,7 @@ typing = [
 legacy_tox_ini = """
     [tox]
     min_version = 4
-    env_list = py3{9,10,11,12}, check
+    env_list = py3{10,11,12}, check
     work_dir = local/.tox
     isolated_build = True
 
@@ -93,7 +93,7 @@ legacy_tox_ini = """
 [tool.ruff]
 line-length = 120
 src = ["src"]
-target-version = "py39"
+target-version = "py310"
 cache-dir = "local/.ruff_cache"
 force-exclude = true
 
