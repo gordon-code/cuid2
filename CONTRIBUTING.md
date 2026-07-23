@@ -9,9 +9,9 @@ don't already cover your question or contribution.
 
 ## Installation
 
-We recommend using [`pdm`](https://pdm.fming.dev/latest/) 
+We recommend using [`uv`](https://docs.astral.sh/uv/) 
 to isolate dependencies for development and reuse existing workflows. 
-This guide assumes that you have already installed `pdm`.
+This guide assumes that you have already installed `uv`.
 
 Clone the repository (alternatively, if you plan on making a pull request and 
 are not in the cuid2.py organisation, use the [GitHub page](https://github.com/gordon-code/cuid2) 
@@ -23,7 +23,7 @@ $ cd cuid2
 
 Ensure that you have installed the package and development dependencies:
 ```bash
-$ pdm install
+$ uv sync
 ```
 
 And finally create a separate branch to begin work
@@ -35,15 +35,16 @@ $ git checkout -b my-new-feature
 
 We rely on a number of formatters, linters, and tests to ensure that 
 the codebase is consistent and free from regressions. Running with
-`pdm run lint-fast` enables quick updates to files during development.
+`uv run ruff check --fix src/ local/tests/ && uv run ruff format src/ local/tests/`
+enables quick updates to files during development.
 
 Prior to committing, we encourage running the following commands in
 order for your pull request to be accepted:
 ```bash
-$ pdm run tox
+$ uv run tox
 ```
 
-The GitHub Action will _also_ run `pdm run testing-slow` to catch any
+The GitHub Action will _also_ run `uv run pytest local/tests --runslow` to catch any
 collision regressions. You may also run it locally. The test takes
 approximately 40 minutes.
 

@@ -21,15 +21,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-      - name: Set up PDM
-        uses: pdm-project/setup-pdm@v4
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           python-version: 3.12
       - name: Build Release
-        run: pdm build
+        run: uv build
         env:
           PDM_BUILD_SCM_VERSION: ${{ inputs.versionNumber }}
       - name: Publish Release
-        run: pdm publish --no-build
+        run: uv publish
       - name: Create GitHub Release
         run: gh release create v${{inputs.versionNumber}} --latest --generate-notes dist/*
