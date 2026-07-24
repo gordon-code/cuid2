@@ -41,7 +41,7 @@ enables quick updates to files during development.
 Prior to committing, we encourage running the following commands in
 order for your pull request to be accepted:
 ```bash
-$ uv run tox
+$ uv run tox p
 ```
 
 The GitHub Action will _also_ run `uv run pytest local/tests --runslow` to catch any
