@@ -32,23 +32,10 @@ cuid2 = "cuid2.cli:main"
 [tool.pdm.version]
 source = "scm"
 
-[tool.pdm.scripts]
-# Default to linting the entire src/ directory, but allow overriding with specific files
-ruff-check = "ruff check --fix --exit-zero {args:src/ local/tests/}"
-ruff-format = "ruff format {args:src/ local/tests/}"
-spelling = "codespell {args:src/ local/tests/}"
-pylint = "pylint {args:src/ local/tests/}"
-safety = "safety {args:check --bare}"
-typing = "mypy {args:src/ local/tests/}"
-update-pip = "pip install --upgrade pip"
-ruff-fix = {composite = ["ruff-check", "ruff-format"]}
-lint-full = {composite = ["ruff-fix", "spelling", "pylint", "typing", "safety"]}
-tox-full = {composite = ["update-pip", "lint-full"]}
-testing = "pytest local/tests"
-testing-slow = "pytest local/tests --runslow"
-tox = "tox --parallel auto"
+[tool.uv]
+default-groups = ["lint", "test", "tox", "typing"]
 
-[tool.pdm.dev-dependencies]
+[dependency-groups]
 lint = [
     "codespell==2.2.6",  #  https://github.com/codespell-project/codespell  (latest:  2.2.6)
     "pylint==4.0.6",     #  https://github.com/pylint-dev/pylint            (latest:  3.1.0)
@@ -62,9 +49,8 @@ test = [
     "pytest-sugar==1.0.0",  #  https://github.com/Teemu/pytest-sugar       (latest:  1.0.0)
 ]
 tox = [
-    # Version reduced to prevent `packaging` conflict with safety
-    "tox==4.14.2",     #  https://github.com/tox-dev/tox          (latest:  4.14.2)
-    "tox-pdm==0.7.2",  #  https://github.com/pdm-project/tox-pdm  (latest:  0.7.2)
+    "tox==4.58.0",     #  https://github.com/tox-dev/tox      (latest:  4.58.0)
+    "tox-uv==1.36.0",  #  https://github.com/tox-dev/tox-uv   (latest:  1.36.0)
 ]
 typing = [
     "mypy==2.2.0",  #  https://github.com/python/mypy  (latest:  1.9.0)
@@ -79,15 +65,26 @@ legacy_tox_ini = """
     isolated_build = True
 
     [testenv]
+    runner = uv-venv-lock-runner
     description = run unit tests
-    groups = test
-    commands = testing
+    dependency_groups = test
+    commands = pytest local/tests
 
     [testenv:check]
+    runner = uv-venv-lock-runner
     description = run linters and typing
-    skip_install = true
-    groups = lint, typing, test
-    commands = tox-full
+    package = skip
+    dependency_groups =
+        lint
+        typing
+        test
+    commands =
+        ruff check --fix --exit-zero src/ local/tests/
+        ruff format src/ local/tests/
+        codespell src/ local/tests/
+        pylint src/ local/tests/
+        mypy src/ local/tests/
+        safety check --bare
 """
 
 [tool.ruff]
