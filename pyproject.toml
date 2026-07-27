@@ -40,7 +40,7 @@ lint = [
     "codespell==2.2.6",  #  https://github.com/codespell-project/codespell  (latest:  2.2.6)
     "pylint==4.0.6",     #  https://github.com/pylint-dev/pylint            (latest:  3.1.0)
     "requests==2.34.2",  #  https://github.com/psf/requests                 (latest:  2.31.0)
-    "ruff==0.3.7",       #  https://github.com/astral-sh/ruff               (latest:  0.3.7)
+    "ruff==0.16.0",       #  https://github.com/astral-sh/ruff               (latest:  0.3.7)
     "safety==3.8.1",     #  https://github.com/pyupio/safety                (latest:  3.8.1)
 ]
 test = [
