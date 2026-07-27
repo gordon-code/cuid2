@@ -45,7 +45,7 @@ lint = [
 ]
 test = [
     "pytest==9.1.1",        #  https://github.com/pytest-dev/pytest        (latest:  9.1.1)
-    "pytest-mock==3.14.1",  #  https://github.com/pytest-dev/pytest-mock/  (latest:  3.14.0)
+    "pytest-mock==3.15.1",  #  https://github.com/pytest-dev/pytest-mock/  (latest:  3.14.0)
     "pytest-sugar==1.0.0",  #  https://github.com/Teemu/pytest-sugar       (latest:  1.0.0)
 ]
 tox = [
