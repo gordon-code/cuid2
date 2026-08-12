@@ -65,4 +65,4 @@ jobs:
         env:
           CODEQL_EXTRACTOR_PYTHON_ANALYSIS_VERSION: 3.12
       - name: Perform Secure Code Analysis (Secrets)
-        uses: trufflesecurity/trufflehog@82df476e759c1448517fac6bfb3677685cdcd78a # main
+        uses: trufflesecurity/trufflehog@96b593f460badf7a3da2ad3487e0e4986243ef03 # main
