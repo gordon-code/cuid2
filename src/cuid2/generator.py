@@ -28,6 +28,7 @@ class Cuid:  # pylint: disable=too-few-public-methods
         counter: Callable[[int], Callable[[], int]] = utils.create_counter,
         length: int = DEFAULT_LENGTH,
         fingerprint: FingerprintCallable = utils.create_fingerprint,
+        alphabet: Optional[str] = None
     ) -> None:
         """Initialization function for the Cuid class that generates a universally unique,
         base36 encoded string.
@@ -46,6 +47,9 @@ class Cuid:  # pylint: disable=too-few-public-methods
             A length value greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
         fingerprint : "FingerprintCallable", default=utils.create_fingerprint
             The "fingerprint" parameter is a callable function that generates a unique identifier.
+        alphabet : str, default=None
+            Alphabet to use in string encoding process.
+            If alphabet is not proivided default lowecase+digits will be used.
 
         Raises
         ------
@@ -60,6 +64,7 @@ class Cuid:  # pylint: disable=too-few-public-methods
         self._counter: Callable[[], int] = counter(floor(self._random.random() * INITIAL_COUNT_MAX))
         self._length: int = length
         self._fingerprint: str = fingerprint(random_generator=self._random)
+        self._alphabet = alphabet
 
     def generate(self: Cuid, length: Optional[int] = None) -> str:
         """Generates a universally unique, base36 encoded string with a specified length.
@@ -88,28 +93,38 @@ class Cuid:  # pylint: disable=too-few-public-methods
             msg = "Length must never exceed 98 characters."
             raise ValueError(msg)
 
-        first_letter: str = utils.create_letter(random_generator=self._random)
+        first_letter: str = utils.create_letter(random_generator=self._random, alphabet=self._alphabet)
 
-        base36_time: str = utils.base36_encode(time.time_ns())
-        base36_count: str = utils.base36_encode(self._counter())
+        base36_time: str = utils.custom_base_encode(time.time_ns(), self._alphabet)
+        base36_count: str = utils.custom_base_encode(self._counter(), self._alphabet)
 
         salt: str = utils.create_entropy(length=length, random_generator=self._random)
         hash_input: str = base36_time + salt + base36_count + self._fingerprint
 
-        return first_letter + utils.create_hash(hash_input)[1 : length or self._length]
+        return first_letter + utils.create_hash(hash_input, alphabet=self._alphabet)[1 : length or self._length]
 
 
-def cuid_wrapper() -> Callable[[], str]:
+def cuid_wrapper(length: Optional[int] = None, alphabet: Optional[str] = None) -> Callable[[], str]:
     """Wrap a single Cuid class instance and return a callable that generates a CUID string.
+
+    Parameters
+    ----------
+    length : int, optional
+        The length parameter is an optional integer value that specifies the length of the generated string.
+        If it is not provided, the default length value provided during class initialization is used.
+        A length value greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
+    alphabet : str, default=None
+        Alphabet to use in string encoding process.
+        If alphabet is not proivided default lowecase+digits will be used.
 
     Returns
     -------
     Callable[[], str]
         A callable that generates a CUID string.
     """
-    cuid_generator: Cuid = Cuid()
+    cuid_generator: Cuid = Cuid(alphabet=alphabet)
 
     def cuid() -> str:
-        return cuid_generator.generate()
+        return cuid_generator.generate(length)
 
     return cuid
