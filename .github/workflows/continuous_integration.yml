@@ -1,9 +1,9 @@
 name: Continuous Integration
 on:
   workflow_dispatch: {}
-  schedule:
+  # schedule:
     # Weekly every Saturday at midnight
-    - cron: '0 0 * * 6'
+    # - cron: '0 0 * * 6'
 
 jobs:
   test-lint-scan:

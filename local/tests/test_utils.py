@@ -13,42 +13,42 @@ if TYPE_CHECKING:
 class TestBase36Encode:
     #  Tests that the function returns "0" when given the number 0
     def test_zero_returns_0(self: "TestBase36Encode") -> None:
-        assert utils.base36_encode(0) == "0"
+        assert utils.custom_base_encode(0) == "0"
 
     #  Tests that the function raises a ValueError when given a negative number
     def test_negative_number_raises_value_error(self: "TestBase36Encode") -> None:
         with pytest.raises(ValueError, match="Cannot encode negative integers."):
-            utils.base36_encode(-1)
+            utils.custom_base_encode(-1)
 
     #  Tests that the function can handle the maximum value for an integer
     def test_max_int(self: "TestBase36Encode") -> None:
-        assert utils.base36_encode(2147483647) == "zik0zj"
+        assert utils.custom_base_encode(2147483647) == "zik0zj"
 
     #  Tests that the function returns a string consisting only of lowercase letters and digits
     def test_returns_lowercase_letters_and_digits(self: "TestBase36Encode") -> None:
-        encoded_string = utils.base36_encode(123456789)
+        encoded_string = utils.custom_base_encode(123456789)
         assert all(c in string.digits + string.ascii_lowercase for c in encoded_string)
 
     #  Tests that the function can handle a large prime number
     def test_large_prime_number(self: "TestBase36Encode") -> None:
-        assert utils.base36_encode(982451653) == "g8xcjp"
+        assert utils.custom_base_encode(982451653) == "g8xcjp"
 
     #  Tests that the function can handle a large composite number
     def test_large_composite_number(self: "TestBase36Encode") -> None:
-        assert utils.base36_encode(999999999) == "gjdgxr"
+        assert utils.custom_base_encode(999999999) == "gjdgxr"
 
     #  Tests that the function can handle a large power of 2
     def test_large_power_of_2(self: "TestBase36Encode") -> None:
-        assert utils.base36_encode(2**50) == "b33j9ynrb4"
+        assert utils.custom_base_encode(2**50) == "b33j9ynrb4"
 
     #  Tests that the function can handle a large power of 10
     def test_large_power_of_10(self: "TestBase36Encode") -> None:
-        assert utils.base36_encode(10**50) == "1ku3a4pjfxx2nd2gl07gtqboljenwn75s"
+        assert utils.custom_base_encode(10**50) == "1ku3a4pjfxx2nd2gl07gtqboljenwn75s"
 
     #  Tests the performance of the function for very large numbers
     def test_performance_for_very_large_numbers(self: "TestBase36Encode") -> None:
         assert (
-            utils.base36_encode(2**10000)
+            utils.custom_base_encode(2**10000)
             == "2kqaqr9n8eopgtn6k95g23riodx51p4o3jwyma480okqkygdk2cn232qvv2svfuvbzb5dy9yeoqceom839h5k1yzf6izbx3rnrjx4pfili0r67ebjqnjhwqevgboilk8yf8ueh7pnd28hk2xttyvgmiqcew98grghfhqz4xe93yiifh69uh4kxt2ld4ba87izsm9u323ekhjh37k5tsyn9of1gds6lzq526i1r3f70gd74z9ni2b2ej456p7frfijzu9hpdkw1vpsuwds7zpbr7uwcu2qbb0o9djiehjcltlpptcqg19sxajz8vyffjeuajmdew0q9j9h7ovpgmyat92n3rx0fgfsu4kluaoi146z5v1t00q073fe6f6ijdue1g06lvqx9ijmezax2tooljo5c362eil7nkkz91d0n5ghfe1rhofsyujw4209klyhjzcu10ycc0oc19pq7sqo1ugs10ym59phjo752siiuj56z2yns5dtodwff92we0a9sgho98t2jgqtgiwilmcmksi5aighqi8h5pxsvyc6owrans06be91u2gtwi43s3i46rjkvpn85xzco0dgwfzzp8hto1axij5w3j69snadxvc0ed3971r936qzc0cyou95081lvplzcrid76kf8wbm68tj3zv4j9fj4dnl19etn1koc3hx8eixx85uda4rv92j3dl0ib8ixgeywnjmivv3kmich1balqsp1hd4b88r7aephwoc9uphu9u2eorlvjmquvqziuu7w1usbf3lmdx289lkdeyecnymd88xlb7thrlmxvzjlmnxfjzmqcnaie4sfz81mlqq6n48b4vdkh7gimhfy9rddxdy3fi2faochb1cnikvkwdz02qa5v9p3l7cnzhxqwhrqdhrcawfl2lbzvs26uzf2fyj2u5i7gv750aitt8drg8md9i551u8hpaw28r1p3qi29soq8d2iakhw2ezzeux71zlex537kgs18lgk56nw1gbrk00oqowzb5t117bvgp6221nr5slvxz3ozr2gqdzume9xuqpeeza98qd009p50qkmghyb3tqsyhmo72h9ptv98w6dh1vwrja2oa5lfi2ei234f2haziqh3jp0v8vv40tur6cydgv8dohm20yurg6gymgjgm3pb8q2hf57hxioeiyild50rersbfumcyc4ij5nhxavlg5s976mkphr0wurzuri1uk44vmrw6w3mftfozkxvo14aii0xct1t6czu9w9njatnx9igw51aqy3c7rjz7vugf0yzlo6t61a72ddp7lrd9ymgyca271cr17f16fojq5g688h6rgxg1hhb5zzedw23723s93mai3f603gd4utc7levfzpdhqt7l7t4b70efvq029zofoqrzgno8bpyg5vgz12jdun0of0ua47zzpa7wk0psnrq0yal1isbf6hbnlvfundz2hbrl4mfxnxxgobkv2jyaag9872k45x8uwau1mlzx8xhtc43829wyauwejfqifs4em5ipgih0ypn8bfjyq6b3blevcmrostiqldnqa7znph1zfm7xdjmhghmx57qit1ojxjkjliendm98redq1xtai822suagwdzhq1y8kf523m0nslhvjomttuydoqqe6pr5rf76aqe3pwx6pmcrub3gmvg6scojyjj4o429qjpzjsehoqe8y6rivp7i904dricmv1l75cfomy5x92cd34m7r8k886i7o58krwj5257b9wfq7dcj4mwq76vctcezae4v8jtz29fsjl2lbjqhxfjb8itp6x89ems9fga26i7t7zl5njmbqtp2jt9ommmhiz3ty7izh9gk5dxr26n9bz6j3swbu980hfd9v0vbdrn72ra3eiawckwkvhmdgfpi12cjamr0jf22jf268sg"  # noqa: E501
         )
 
