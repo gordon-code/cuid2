@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 class TestCuid:
     #  Tests execution time to ensure that time complexity doesn't increase.
-    @pytest.mark.slow()
+    @pytest.mark.slow
     def test_generate_performance(self: "TestCuid") -> None:
         timing_result = repeat(
             stmt="cuid.generate()",
@@ -41,7 +41,7 @@ class TestCuid:
 
     #  Tests that generate() works when length parameter is really long.
     def test_generate_really_long_length(self: "TestCuid") -> None:
-        with pytest.raises(ValueError, match="Length must never exceed 98 characters."):
+        with pytest.raises(ValueError, match=r"Length must never exceed 98 characters\."):
             Cuid(length=100)
 
     #  Tests that generate() works when length parameter is less than 2.

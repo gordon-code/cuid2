@@ -2,4 +2,4 @@
 
 from .generator import DEFAULT_LENGTH, INITIAL_COUNT_MAX, Cuid, cuid_wrapper
 
-__all__ = ["Cuid", "DEFAULT_LENGTH", "INITIAL_COUNT_MAX", "cuid_wrapper"]
+__all__ = ["DEFAULT_LENGTH", "INITIAL_COUNT_MAX", "Cuid", "cuid_wrapper"]

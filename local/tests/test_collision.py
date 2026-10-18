@@ -83,7 +83,7 @@ def is_histogram_evenly_distributed(
     return all(min_bin_size < count < max_bin_size for count in histogram_values)
 
 
-@pytest.mark.slow()
+@pytest.mark.slow
 @pytest.mark.parametrize(
     ("num_ids", "num_pools"),
     [

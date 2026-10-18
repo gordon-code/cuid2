@@ -17,7 +17,7 @@ class TestBase36Encode:
 
     #  Tests that the function raises a ValueError when given a negative number
     def test_negative_number_raises_value_error(self: "TestBase36Encode") -> None:
-        with pytest.raises(ValueError, match="Cannot encode negative integers."):
+        with pytest.raises(ValueError, match=r"Cannot encode negative integers\."):
             utils.base36_encode(-1)
 
     #  Tests that the function can handle the maximum value for an integer
@@ -143,7 +143,7 @@ class TestCreateEntropy:
         # Edge case test with length = 0
         mock_random = mocker.Mock()
         mock_random.random.return_value = 0.5
-        with pytest.raises(ValueError, match="Cannot create entropy without a length >= 1."):
+        with pytest.raises(ValueError, match=r"Cannot create entropy without a length >= 1\."):
             utils.create_entropy(mock_random, length=0)
 
     #  Tests that create_entropy raises a ValueError when given a valid instance of Random and a negative length
@@ -151,7 +151,7 @@ class TestCreateEntropy:
         # Edge case test with negative length
         mock_random = mocker.Mock()
         mock_random.random.return_value = 0.5
-        with pytest.raises(ValueError, match="Cannot create entropy without a length >= 1."):
+        with pytest.raises(ValueError, match=r"Cannot create entropy without a length >= 1\."):
             utils.create_entropy(mock_random, length=-1)
 
     #  Tests that create_entropy raises a TypeError when given an invalid instance of Random
@@ -278,7 +278,7 @@ class TestCreateFingerprint:
         mock_random.random.return_value = 0.5
         invalid_length = -1
 
-        with pytest.raises(ValueError, match="Cannot create entropy without a length >= 1."):
+        with pytest.raises(ValueError, match=r"Cannot create entropy without a length >= 1\."):
             utils.create_entropy(random_generator=mock_random, length=invalid_length)
 
     #  Tests that create_fingerprint returns a string of length BIG_LENGTH even when the entropy
