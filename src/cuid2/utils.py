@@ -19,9 +19,8 @@ BIG_LENGTH: Final = 32
 
 
 if TYPE_CHECKING:
-    from hashlib import _Hash
-
     from _random import Random
+    from hashlib import _Hash
 
 
 def create_counter(count: int) -> Callable[[], int]:
