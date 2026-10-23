@@ -54,14 +54,14 @@ class TestCuid:
         with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
             Cuid(length=0)
         with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
-            Cuid(length=True)  # noqa: FBT003
+            Cuid(length=True)
         cuid = Cuid()
         with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
             cuid.generate(length=0)
         with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
             cuid.generate(length=-1)
         with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
-            cuid.generate(length=True)  # noqa: FBT003
+            cuid.generate(length=True)
 
     #  Tests that generate() works when length parameter is less than 2.
     def test_generate_length_less_than_2(self: "TestCuid") -> None:
