@@ -40,21 +40,23 @@ pip install cuid2
 
 ## Usage
 
-You can generate CUIDs directly in the terminal with the following:
+You can generate CUIDs directly in the terminal with the following (optionally specifying a custom length):
 ```bash
 $ cuid2
+$ cuid2 10
 ```
 
-Or you can rely on a CUID wrapper if you don't need any customizations:
+Or you can rely on a CUID wrapper if you only need default or custom-length generation:
 ```python
 from typing import Callable
 from cuid2 import cuid_wrapper
 
 cuid_generator: Callable[[], str] = cuid_wrapper()
+short_cuid_generator: Callable[[], str] = cuid_wrapper(length=10)
 
 def main():
   my_cuid: str = cuid_generator()
-  next_cuid: str = cuid_generator()
+  short_cuid: str = short_cuid_generator()
 ```
 
 Finally, for more explicit control of the CUID generator, you can instantiate the class directly:

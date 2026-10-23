@@ -16,6 +16,7 @@ except ImportError:
 
 
 BIG_LENGTH: Final = 32
+HASH_LENGTH: Final = 99
 
 
 if TYPE_CHECKING:
@@ -77,7 +78,7 @@ def create_fingerprint(random_generator: Random, fingerprint_data: Optional[str]
     return create_hash(fingerprint)[0:BIG_LENGTH]
 
 
-def create_entropy(random_generator: Random, length: int = 4, alphabet: Optional[str] = None) -> str:
+def create_entropy(random_generator: Random, length: int = 4) -> str:
     """Creates a random string of specified length using a base36 encoding.
 
     Parameters
@@ -87,9 +88,6 @@ def create_entropy(random_generator: Random, length: int = 4, alphabet: Optional
     length : int, default=4
         The length parameter is an integer that specifies the length of the entropy string to be generated.
         The default value is 4, but it can be set to any positive integer value.
-    alphabet : str, default=None
-        Alphabet to use in string encoding process.
-        If alphabet is not proivided default lowecase+digits will be used.
 
     Returns
     -------
@@ -109,12 +107,12 @@ def create_entropy(random_generator: Random, length: int = 4, alphabet: Optional
     entropy: str = ""
 
     while len(entropy) < length:
-        entropy += custom_base_encode(floor(random_generator.random() * 36), alphabet=alphabet)
+        entropy += base36_encode(floor(random_generator.random() * 36))
 
     return entropy
 
 
-def create_hash(data: str = "", alphabet: Optional[str] = None) -> str:
+def create_hash(data: str = "") -> str:
     """Creates a hash value for a given string using the SHA-512 algorithm (prefers SHA3) and returns
     it in base36 encoding format after dropping the first character.
 
@@ -123,9 +121,6 @@ def create_hash(data: str = "", alphabet: Optional[str] = None) -> str:
     data : str, default=""
         Data to be hashed. It is an optional parameter with a default value of an empty string.
         If no value is provided for `data`, an empty string will be hashed.
-    alphabet : str, default=None
-        Alphabet to use in string encoding process.
-        If alphabet is not proivided default lowecase+digits will be used.
 
     Returns
     -------
@@ -137,10 +132,10 @@ def create_hash(data: str = "", alphabet: Optional[str] = None) -> str:
     hashed_int: int = int.from_bytes(hashed_value.digest(), byteorder="big")
 
     # Drop the first character because it will bias the histogram to the left.
-    return custom_base_encode(hashed_int, alphabet=alphabet)[1:]
+    return base36_encode(hashed_int).zfill(HASH_LENGTH)[1:]
 
 
-def create_letter(random_generator: Random, alphabet: Optional[str] = None) -> str:
+def create_letter(random_generator: Random) -> str:
     """Generates a random lowercase letter using a given random number generator.
 
     Parameters
@@ -153,55 +148,17 @@ def create_letter(random_generator: Random, alphabet: Optional[str] = None) -> s
     str
         a randomly generated lowercase letter from the English alphabet.
     """
-    if not alphabet:
-        alphabet = string.ascii_lowercase
+    alphabet: str = string.ascii_lowercase
     return alphabet[floor(random_generator.random() * len(alphabet))]
 
 
-# def base36_encode(number: int) -> str:
-#     """Encodes a positive integer into a base36 string.
-
-#     Parameters
-#     ----------
-#     number : int
-#         Integer to be encoded as a base36 string.
-
-#     Returns
-#     -------
-#     str
-#         A string that represents the base36 encoded input integer.
-#         If the input integer is negative, a ValueError is raised.
-#         If the input integer is 0, the function returns the string "0".
-
-#     Raises
-#     ------
-#     ValueError
-#         If the input integer is negative.
-#     """
-#     if number < 0:
-#         msg = "Cannot encode negative integers."
-#         raise ValueError(msg)
-
-#     encoded_string: str = ""
-#     alphabet: str = string.digits + string.ascii_lowercase
-#     alphabet_length: int = len(alphabet)
-
-#     while number != 0:
-#         number, mod = divmod(number, alphabet_length)
-#         encoded_string = alphabet[mod] + encoded_string
-
-#     return encoded_string or "0"
-
-def custom_base_encode(number: int, alphabet: Optional[str] = None) -> str:
-    """Encodes a positive integer into a string with the provided alphabet.
+def base36_encode(number: int) -> str:
+    """Encodes a positive integer into a base36 string.
 
     Parameters
     ----------
     number : int
-        Integer to be encoded as a alphabet-encoded string.
-    alphabet : str
-        Alphabet to use in encoding process.
-        If alphabet is not proivided default lowecase+digits will be used.
+        Integer to be encoded as a base36 string.
 
     Returns
     -------
@@ -220,12 +177,11 @@ def custom_base_encode(number: int, alphabet: Optional[str] = None) -> str:
         raise ValueError(msg)
 
     encoded_string: str = ""
-    if alphabet is None:
-        alphabet = string.digits + string.ascii_lowercase
+    alphabet: str = string.digits + string.ascii_lowercase
     alphabet_length: int = len(alphabet)
 
     while number != 0:
         number, mod = divmod(number, alphabet_length)
         encoded_string = alphabet[mod] + encoded_string
 
-    return encoded_string or alphabet[0]
+    return encoded_string or "0"

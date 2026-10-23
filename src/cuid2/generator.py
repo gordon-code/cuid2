@@ -28,7 +28,6 @@ class Cuid:  # pylint: disable=too-few-public-methods
         counter: Callable[[int], Callable[[], int]] = utils.create_counter,
         length: int = DEFAULT_LENGTH,
         fingerprint: FingerprintCallable = utils.create_fingerprint,
-        alphabet: Optional[str] = None
     ) -> None:
         """Initialization function for the Cuid class that generates a universally unique,
         base36 encoded string.
@@ -41,21 +40,21 @@ class Cuid:  # pylint: disable=too-few-public-methods
         counter : Callable[[int], Callable[[], int]], default=utils.create_counter
             The `counter` parameter is a callable that creates a counter returning an incremented value each time it
             is called. The `create_counter` function from the `utils` module is used by default.
-        length : int, default=DEFAULT_LENGTH (4)
+        length : int, default=DEFAULT_LENGTH (24)
             The length parameter is an integer that determines the maximum length of the generated string.
-            It has a default value of DEFAULT_LENGTH (4).
-            A length value greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
+            It has a default value of DEFAULT_LENGTH (24).
+            A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
         fingerprint : "FingerprintCallable", default=utils.create_fingerprint
             The "fingerprint" parameter is a callable function that generates a unique identifier.
-        alphabet : str, default=None
-            Alphabet to use in string encoding process.
-            If alphabet is not proivided default lowecase+digits will be used.
 
         Raises
         ------
         ValueError
-            If the length parameter is greater than `MAXIMUM_LENGTH` (98 characters).
+            If the length parameter is less than 1 or greater than `MAXIMUM_LENGTH` (98 characters).
         """
+        if isinstance(length, bool) or length < 1:
+            msg = "Length must be at least 1 character."
+            raise ValueError(msg)
         if length > MAXIMUM_LENGTH:
             msg = "Length must never exceed 98 characters."
             raise ValueError(msg)
@@ -64,7 +63,6 @@ class Cuid:  # pylint: disable=too-few-public-methods
         self._counter: Callable[[], int] = counter(floor(self._random.random() * INITIAL_COUNT_MAX))
         self._length: int = length
         self._fingerprint: str = fingerprint(random_generator=self._random)
-        self._alphabet = alphabet
 
     def generate(self: Cuid, length: Optional[int] = None) -> str:
         """Generates a universally unique, base36 encoded string with a specified length.
@@ -74,7 +72,7 @@ class Cuid:  # pylint: disable=too-few-public-methods
         length : int, optional
             The length parameter is an optional integer value that specifies the length of the generated string.
             If it is not provided, the default length value provided during class initialization is used.
-            A length value greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
+            A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
 
         Returns
         -------
@@ -86,25 +84,28 @@ class Cuid:  # pylint: disable=too-few-public-methods
         Raises
         ------
         ValueError
-            If the length parameter is greater than `MAXIMUM_LENGTH` (98 characters).
+            If the length parameter is less than 1 or greater than `MAXIMUM_LENGTH` (98 characters).
         """
-        length = length or self._length
-        if length > MAXIMUM_LENGTH:
+        resolved_length: int = self._length if length is None else length
+        if isinstance(resolved_length, bool) or resolved_length < 1:
+            msg = "Length must be at least 1 character."
+            raise ValueError(msg)
+        if resolved_length > MAXIMUM_LENGTH:
             msg = "Length must never exceed 98 characters."
             raise ValueError(msg)
 
-        first_letter: str = utils.create_letter(random_generator=self._random, alphabet=self._alphabet)
+        first_letter: str = utils.create_letter(random_generator=self._random)
 
-        base36_time: str = utils.custom_base_encode(time.time_ns(), self._alphabet)
-        base36_count: str = utils.custom_base_encode(self._counter(), self._alphabet)
+        base36_time: str = utils.base36_encode(time.time_ns())
+        base36_count: str = utils.base36_encode(self._counter())
 
-        salt: str = utils.create_entropy(length=length, random_generator=self._random)
+        salt: str = utils.create_entropy(length=resolved_length, random_generator=self._random)
         hash_input: str = base36_time + salt + base36_count + self._fingerprint
 
-        return first_letter + utils.create_hash(hash_input, alphabet=self._alphabet)[1 : length or self._length]
+        return first_letter + utils.create_hash(hash_input)[1:resolved_length]
 
 
-def cuid_wrapper(length: Optional[int] = None, alphabet: Optional[str] = None) -> Callable[[], str]:
+def cuid_wrapper(length: Optional[int] = None) -> Callable[[], str]:
     """Wrap a single Cuid class instance and return a callable that generates a CUID string.
 
     Parameters
@@ -112,19 +113,21 @@ def cuid_wrapper(length: Optional[int] = None, alphabet: Optional[str] = None) -
     length : int, optional
         The length parameter is an optional integer value that specifies the length of the generated string.
         If it is not provided, the default length value provided during class initialization is used.
-        A length value greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
-    alphabet : str, default=None
-        Alphabet to use in string encoding process.
-        If alphabet is not proivided default lowecase+digits will be used.
+        A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
 
     Returns
     -------
     Callable[[], str]
         A callable that generates a CUID string.
+
+    Raises
+    ------
+    ValueError
+        If the length parameter is less than 1 or greater than `MAXIMUM_LENGTH` (98 characters).
     """
-    cuid_generator: Cuid = Cuid(alphabet=alphabet)
+    cuid_generator: Cuid = Cuid(length=length) if length is not None else Cuid()
 
     def cuid() -> str:
-        return cuid_generator.generate(length)
+        return cuid_generator.generate()
 
     return cuid
