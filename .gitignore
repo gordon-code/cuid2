@@ -108,6 +108,9 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
+# VS Code project settings
+.vscode/
+
 # mkdocs documentation
 /site
 
@@ -127,5 +130,4 @@ cython_debug/
 
 .idea/
 .pdm-python
-.vscode/
 /.github/local_runner/
