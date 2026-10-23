@@ -91,9 +91,7 @@ class TestCuid:
         assert isinstance(cuid._fingerprint, str)
 
     #  Tests that the random_generator and fingerprint functions are called correctly when mocked.
-    def test_mock_random_generator_and_fingerprint(
-        self: "TestCuid", mocker: "Mock"
-    ) -> None:
+    def test_mock_random_generator_and_fingerprint(self: "TestCuid", mocker: "Mock") -> None:
         mock_random_class = mocker.Mock()
         mock_random = mocker.Mock()
         mock_random.random.return_value = 0.5
@@ -111,9 +109,7 @@ class TestCuid:
 
         # Generate a Cuid and assert that the mocked functions were called correctly
         cuid_str = cuid.generate()
-        assert (
-            cuid_str == "locked_hash"
-        )  # first letter is "l" from mocked create_letter function
+        assert cuid_str == "locked_hash"  # first letter is "l" from mocked create_letter function
         assert cuid._fingerprint == "mocked_fingerprint"
         assert (
             cuid._counter() == 238391185
@@ -136,17 +132,11 @@ class TestCuid:
         mock_fingerprint = mocker.Mock()
 
         # Act
-        cuid = Cuid(
-            random_generator=mock_random_class,
-            counter=mock_counter,
-            fingerprint=mock_fingerprint,
-        )
+        cuid = Cuid(random_generator=mock_random_class, counter=mock_counter, fingerprint=mock_fingerprint)
 
         # Assert
         assert cuid._random == mock_random_class()
-        assert cuid._counter == mock_counter(
-            floor(cuid._random.random() * INITIAL_COUNT_MAX)
-        )
+        assert cuid._counter == mock_counter(floor(cuid._random.random() * INITIAL_COUNT_MAX))
         assert cuid._length == DEFAULT_LENGTH
         assert cuid._fingerprint == mock_fingerprint(random_generator=cuid._random)
 
@@ -160,16 +150,10 @@ class TestCuid:
         mock_counter = mocker.Mock()
         mock_counter.return_value = lambda: 123456789
         mock_fingerprint = mocker.Mock(return_value="abcdefg")
-        mocker.patch(
-            "time.time_ns", return_value=1627584000000000000
-        )  # 2021-07-30 00:00:00 UTC
+        mocker.patch("time.time_ns", return_value=1627584000000000000)  # 2021-07-30 00:00:00 UTC
         mocker.patch("cuid2.utils.create_letter", return_value="l")
 
-        cuid = Cuid(
-            random_generator=mock_random_class,
-            counter=mock_counter,
-            fingerprint=mock_fingerprint,
-        )
+        cuid = Cuid(random_generator=mock_random_class, counter=mock_counter, fingerprint=mock_fingerprint)
 
         # Act
         result = cuid.generate()
@@ -179,39 +163,55 @@ class TestCuid:
         assert len(result) == DEFAULT_LENGTH
         assert result == "l9j3ikop1bi8tcvzme3x3yv7"
 
+    #  Tests that is_cuid returns False for invalid CUID strings and non-string inputs.
     def test_is_cuid_invalid(self: "TestCuid") -> None:
-        """Tests that is_cuid returns False for invalid cuid cuid and False for invalid cuid."""
         # Arrange
         cuid = Cuid()
         valid_cuid = cuid.generate()
 
         # Act and Assert
-        assert cuid.is_cuid("") == False
-        assert cuid.is_cuid("1") == False
-        assert cuid.is_cuid("c") == False
-        assert cuid.is_cuid(valid_cuid + " ") == False
-        assert cuid.is_cuid(valid_cuid.upper()) == False
-        assert (
-            cuid.is_cuid("cjld2cjxh0000qzrmn831i7rn!") == False
-        )  # Hard coded test - almost correct but not quite
+        assert not Cuid.is_cuid("")
+        assert not Cuid.is_cuid("1")
+        assert not Cuid.is_cuid("c")
+        assert not Cuid.is_cuid("42")
+        assert not Cuid.is_cuid("0a")
+        assert not Cuid.is_cuid("1" + valid_cuid[1:])
+        assert not Cuid.is_cuid(valid_cuid + " ")
+        assert not Cuid.is_cuid(valid_cuid + "\n")
+        assert not Cuid.is_cuid(valid_cuid.upper())
+        assert not Cuid.is_cuid("-x!ha")
+        assert not Cuid.is_cuid("ab*%@#x")
+        assert not Cuid.is_cuid("cjld2cjxh0000qzrmn831i7rn!")
+        assert not Cuid.is_cuid("a" * 99)
 
-        # Test min and max lengths with *valid* CUID2 entry (but invalid required length)
-        assert cuid.is_cuid("dlwvlnik2o0lh47uh4kg6q8j", max_length=5) == False
-        assert cuid.is_cuid("dlwvlnik2o0lh47uh4kg6q8j", min_length=25) == False
+        # Non-string inputs
+        assert not Cuid.is_cuid(None)  # type: ignore[arg-type]
+        assert not Cuid.is_cuid(123)  # type: ignore[arg-type]
+        assert not Cuid.is_cuid(["ab"])  # type: ignore[arg-type]
+        assert not Cuid.is_cuid(b"ab")  # type: ignore[arg-type]
 
+        # Test min and max lengths with a valid 24-character CUID2 entry
+        assert not Cuid.is_cuid("dlwvlnik2o0lh47uh4kg6q8j", max_length=5)
+        assert not Cuid.is_cuid("dlwvlnik2o0lh47uh4kg6q8j", max_length=23)
+        assert not Cuid.is_cuid("dlwvlnik2o0lh47uh4kg6q8j", min_length=25)
+
+    #  Tests that is_cuid returns True for valid CUID strings and boundary lengths.
     def test_is_cuid_valid(self: "TestCuid") -> None:
         # Arrange
         cuid = Cuid()
         valid_cuid = cuid.generate()
 
-        assert cuid.is_cuid(valid_cuid) == True
-        assert (
-            cuid.is_cuid("cjld2cjxh0000qzrmn831i7r") == True
-        )  # Hard coded test - correct
+        # Act and Assert
+        assert Cuid.is_cuid(valid_cuid)
+        assert Cuid.is_cuid("cjld2cjxh0000qzrmn831i7r")
+        assert Cuid.is_cuid("ab")
+        assert Cuid.is_cuid("a" * 98)
 
-        # Test min / max length with a valid CUID2 string
-        assert cuid.is_cuid("dlwvlnik2o0lh47uh4kg6q8j", max_length=25) == True
-        assert cuid.is_cuid("dlwvlnik2o0lh47uh4kg6q8j", min_length=20) == True
+        # Test min / max length boundaries with a 24-character CUID2 string
+        assert Cuid.is_cuid("dlwvlnik2o0lh47uh4kg6q8j", max_length=25)
+        assert Cuid.is_cuid("dlwvlnik2o0lh47uh4kg6q8j", max_length=24)
+        assert Cuid.is_cuid("dlwvlnik2o0lh47uh4kg6q8j", min_length=24)
+        assert Cuid.is_cuid("dlwvlnik2o0lh47uh4kg6q8j", min_length=20)
 
 
 class TestCuidWrapper:

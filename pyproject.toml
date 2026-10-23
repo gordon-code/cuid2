@@ -137,6 +137,7 @@ convention = "numpy"
 minversion = "8.1"
 cache_dir = "local/.pytest_cache"
 python_files = "test_*.py"
+testpaths = ["local/tests"]
 
 [tool.pylint.master]
 ignore-patterns = "test_.*.py"

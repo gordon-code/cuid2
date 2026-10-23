@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import time
 import re
+import time
 from math import floor
 from secrets import SystemRandom
 from typing import TYPE_CHECKING, Callable, Final, Optional, Protocol
@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 INITIAL_COUNT_MAX: Final[int] = 476782367
 DEFAULT_LENGTH: Final = 24
 MAXIMUM_LENGTH: Final = 98
+_CUID_REGEX: Final[re.Pattern[str]] = re.compile(r"^[a-z][0-9a-z]+\Z")
 
 
 class Cuid:  # pylint: disable=too-few-public-methods
@@ -58,9 +59,7 @@ class Cuid:  # pylint: disable=too-few-public-methods
             raise ValueError(msg)
 
         self._random: Random = random_generator()
-        self._counter: Callable[[], int] = counter(
-            floor(self._random.random() * INITIAL_COUNT_MAX)
-        )
+        self._counter: Callable[[], int] = counter(floor(self._random.random() * INITIAL_COUNT_MAX))
         self._length: int = length
         self._fingerprint: str = fingerprint(random_generator=self._random)
 
@@ -102,40 +101,30 @@ class Cuid:  # pylint: disable=too-few-public-methods
         return first_letter + utils.create_hash(hash_input)[1 : length or self._length]
 
     @staticmethod
-    def is_cuid(id: str, min_length: int = 2, max_length: Optional[int] = None) -> bool:
+    def is_cuid(cuid_str: str, min_length: int = 2, max_length: int = MAXIMUM_LENGTH) -> bool:
+        """Validates whether a given string is a valid CUID2 identifier.
+
+        Parameters
+        ----------
+        cuid_str : str
+            The string to validate as a CUID2 identifier.
+        min_length : int, default=2
+            The minimum allowed length of the identifier.
+        max_length : int, default=MAXIMUM_LENGTH (98)
+            The maximum allowed length of the identifier.
+
+        Returns
+        -------
+        bool
+            True if `cuid_str` is a string starting with a lowercase ASCII letter followed by
+            lowercase base36 characters and has length between `min_length` and `max_length`
+            inclusive; False otherwise.
         """
-        Check if the given id is a CUID.
-        Port on 2025-02-12 from: https://github.com/paralleldrive/cuid2/blob/main/src/index.js
-
-        :param id: The id to check.
-        :param min_length: The minimum length of the id.
-        :param max_length: The maximum length of the id.
-        :return: True if the id is a CUID, False otherwise.
-
-        # Example usage
-        # print(is_cuid("1"))  # False
-        # print(is_cuid("cjld2cjxh0000qzrmn831i7rn"))  # True
-        """
-        if max_length is None:
-            max_length = float(
-                "inf"
-            )  # Set max_length to a very large number if not provided
-
-        length = len(id)
-        regex = re.compile(r"^[a-z][0-9a-z]+$")
-
-        try:
-            if (
-                isinstance(id, str)
-                and length >= min_length
-                and length <= max_length
-                and regex.match(id)
-            ):
-                return True
-        finally:
-            pass
-
-        return False
+        return (
+            isinstance(cuid_str, str)
+            and min_length <= len(cuid_str) <= max_length
+            and bool(_CUID_REGEX.match(cuid_str))
+        )
 
 
 def cuid_wrapper() -> Callable[[], str]:
