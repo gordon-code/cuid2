@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Callable
 import pytest
 
 from cuid2 import DEFAULT_LENGTH, INITIAL_COUNT_MAX, Cuid, cuid_wrapper
-from cuid2.generator import MAXIMUM_LENGTH, MINIMUM_LENGTH
+from cuid2.generator import MAXIMUM_LENGTH
 
 if TYPE_CHECKING:
     from unittest.mock import Mock
@@ -320,7 +320,7 @@ class TestIsCuid:
     ) -> None:
         assert Cuid.is_cuid(value, **kwargs) is expected
 
-    #  Tests that min_length cannot go below MINIMUM_LENGTH: the identifier shape always needs 2+ characters.
+    #  Tests that min_length cannot go below 2: the identifier shape always needs 2+ characters.
     @pytest.mark.parametrize("min_length", [1, 0, -1, -5, -(10**9)])
     @pytest.mark.parametrize("value", ["", "a", "1"])
     def test_is_cuid_min_length_cannot_go_below_minimum(
@@ -331,7 +331,7 @@ class TestIsCuid:
         assert Cuid.is_cuid(value, min_length=min_length) is False
 
     #  Tests that lowering min_length still accepts valid identifiers.
-    @pytest.mark.parametrize("min_length", [MINIMUM_LENGTH, 1, 0, -1])
+    @pytest.mark.parametrize("min_length", [2, 1, 0, -1])
     def test_is_cuid_min_length_below_minimum_still_accepts_valid(self: "TestIsCuid", min_length: int) -> None:
         assert Cuid.is_cuid("ab", min_length=min_length) is True
 
@@ -346,7 +346,7 @@ class TestIsCuid:
     def test_is_cuid_min_length_above_maximum(self: "TestIsCuid") -> None:
         assert Cuid.is_cuid("a" * MAXIMUM_LENGTH, min_length=MAXIMUM_LENGTH + 1) is False
 
-    #  Tests that max_length below MINIMUM_LENGTH can never match.
+    #  Tests that max_length below 2 can never match.
     @pytest.mark.parametrize("max_length", [1, 0, -1])
     def test_is_cuid_max_length_below_minimum(self: "TestIsCuid", max_length: int) -> None:
         assert Cuid.is_cuid("ab", max_length=max_length) is False
@@ -375,7 +375,7 @@ class TestIsCuid:
     #  The exact length is only asserted below MAXIMUM_LENGTH - 1: at 97 and 98 characters the generator
     #  occasionally returns a shorter id (the SHA3-512 base36 digest is not always long enough), but
     #  such ids are still valid.
-    @pytest.mark.parametrize("length", [MINIMUM_LENGTH, 3, 10, DEFAULT_LENGTH, 50, MAXIMUM_LENGTH - 2, MAXIMUM_LENGTH])
+    @pytest.mark.parametrize("length", [2, 3, 10, DEFAULT_LENGTH, 50, MAXIMUM_LENGTH - 2, MAXIMUM_LENGTH])
     def test_is_cuid_accepts_generated_ids(self: "TestIsCuid", length: int) -> None:
         cuid = Cuid(length=length)
         for _ in range(250):
@@ -401,7 +401,7 @@ class TestIsCuid:
         assert Cuid.is_cuid(generated, max_length=DEFAULT_LENGTH - 1) is False
 
     #  Documents a known asymmetry: the generator can emit 1-character ids, but a valid CUID2 needs 2+ characters.
-    #  If the generator's minimum length is ever raised to MINIMUM_LENGTH, this test should be updated.
+    #  If the generator's minimum length is ever raised to 2, this test should be updated.
     def test_is_cuid_rejects_single_character_generated_id(self: "TestIsCuid") -> None:
         generated = Cuid(length=1).generate()
         assert len(generated) == 1

@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 # with a remaining counter range of 9.0e+15 in JavaScript.
 INITIAL_COUNT_MAX: Final[int] = 476782367
 DEFAULT_LENGTH: Final = 24
-MINIMUM_LENGTH: Final = 2
 MAXIMUM_LENGTH: Final = 98
 _CUID_REGEX: Final[re.Pattern[str]] = re.compile(r"^[a-z][0-9a-z]+\Z")
 
@@ -102,15 +101,16 @@ class Cuid:  # pylint: disable=too-few-public-methods
         return first_letter + utils.create_hash(hash_input)[1 : length or self._length]
 
     @staticmethod
-    def is_cuid(cuid_str: str, min_length: int = MINIMUM_LENGTH, max_length: int = MAXIMUM_LENGTH) -> bool:
+    def is_cuid(cuid_str: str, min_length: int = 2, max_length: int = MAXIMUM_LENGTH) -> bool:
         """Validates whether a given string is a valid CUID2 identifier.
 
         Parameters
         ----------
         cuid_str : str
             The string to validate as a CUID2 identifier.
-        min_length : int, default=MINIMUM_LENGTH (2)
-            The minimum allowed length of the identifier. Values below `MINIMUM_LENGTH` are clamped to it.
+        min_length : int, default=2
+            The minimum allowed length of the identifier. Values below 2 have no effect, since a valid
+            identifier always has a leading letter followed by at least one more character.
         max_length : int, default=MAXIMUM_LENGTH (98)
             The maximum allowed length of the identifier. Values above `MAXIMUM_LENGTH` are clamped to it.
 
@@ -120,9 +120,8 @@ class Cuid:  # pylint: disable=too-few-public-methods
             True if `cuid_str` is a string starting with a lowercase ASCII letter followed by
             lowercase base36 characters and has length between `min_length` and `max_length`
             inclusive; False otherwise. The length bounds can only narrow the range of valid
-            lengths (`MINIMUM_LENGTH` to `MAXIMUM_LENGTH`), never widen it.
+            lengths (2 to `MAXIMUM_LENGTH`), never widen it.
         """
-        min_length = max(min_length, MINIMUM_LENGTH)
         max_length = min(max_length, MAXIMUM_LENGTH)
         return (
             isinstance(cuid_str, str)
