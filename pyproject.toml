@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "cuid2"
-version = "2.0.2"
+version = "2.0.3"
 authors = [
     {name = "Will Gordon", email = "dev@gordoncode.dev"},
 ]

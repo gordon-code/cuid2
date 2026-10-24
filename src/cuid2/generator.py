@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import inspect
 import re
 import time
+import warnings
 from math import floor
 from secrets import SystemRandom
 from typing import TYPE_CHECKING, Callable, Final, Optional, Protocol
 
 from cuid2 import utils
+from cuid2.utils import BIG_LENGTH, MAXIMUM_LENGTH
 
 if TYPE_CHECKING:
     from _random import Random
@@ -19,8 +22,46 @@ if TYPE_CHECKING:
 # with a remaining counter range of 9.0e+15 in JavaScript.
 INITIAL_COUNT_MAX: Final[int] = 476782367
 DEFAULT_LENGTH: Final = 24
-MAXIMUM_LENGTH: Final = 98
+MIN_LENGTH: Final[int] = 2
 _CUID_REGEX: Final[re.Pattern[str]] = re.compile(r"^[a-z][0-9a-z]+\Z")
+
+
+def _validate_length(length: int) -> None:
+    """Validate that the requested CUID length is within supported bounds.
+
+    Parameters
+    ----------
+    length : int
+        The requested CUID length to validate.
+
+    Raises
+    ------
+    ValueError
+        If `length` is a boolean, less than 1, or greater than `MAXIMUM_LENGTH` (98).
+
+    Warns
+    -----
+    DeprecationWarning
+        If `length` is outside the CUID2 specification range (`MIN_LENGTH`..`BIG_LENGTH`, i.e., 2..32).
+    """
+    if isinstance(length, bool) or length < 1:
+        msg = "Length must be at least 1 character."
+        raise ValueError(msg)
+    if length > MAXIMUM_LENGTH:
+        msg = "Length must never exceed 98 characters."
+        raise ValueError(msg)
+    if length < MIN_LENGTH or length > BIG_LENGTH:
+        stacklevel: int = 1
+        frame = inspect.currentframe()
+        while frame is not None and frame.f_code.co_filename == __file__:
+            stacklevel += 1
+            frame = frame.f_back
+        warnings.warn(
+            f"Length {length} outside the CUID2 specification range ({MIN_LENGTH}..{BIG_LENGTH}) "
+            "is deprecated and will raise ValueError in v3.0.0.",
+            DeprecationWarning,
+            stacklevel=stacklevel,
+        )
 
 
 class Cuid:  # pylint: disable=too-few-public-methods
@@ -46,20 +87,21 @@ class Cuid:  # pylint: disable=too-few-public-methods
             The length parameter is an integer that determines the maximum length of the generated string.
             It has a default value of DEFAULT_LENGTH (24).
             A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
+            Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a DeprecationWarning.
         fingerprint : "FingerprintCallable", default=utils.create_fingerprint
             The "fingerprint" parameter is a callable function that generates a unique identifier.
 
         Raises
         ------
         ValueError
-            If the length parameter is less than 1 or greater than `MAXIMUM_LENGTH` (98 characters).
+            If the length parameter is a boolean, less than 1, or greater than `MAXIMUM_LENGTH` (98 characters).
+
+        Warns
+        -----
+        DeprecationWarning
+            If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
         """
-        if isinstance(length, bool) or length < 1:
-            msg = "Length must be at least 1 character."
-            raise ValueError(msg)
-        if length > MAXIMUM_LENGTH:
-            msg = "Length must never exceed 98 characters."
-            raise ValueError(msg)
+        _validate_length(length)
 
         self._random: Random = random_generator()
         self._counter: Callable[[], int] = counter(floor(self._random.random() * INITIAL_COUNT_MAX))
@@ -75,6 +117,7 @@ class Cuid:  # pylint: disable=too-few-public-methods
             The length parameter is an optional integer value that specifies the length of the generated string.
             If it is not provided, the default length value provided during class initialization is used.
             A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
+            Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a DeprecationWarning.
 
         Returns
         -------
@@ -86,15 +129,16 @@ class Cuid:  # pylint: disable=too-few-public-methods
         Raises
         ------
         ValueError
-            If the length parameter is less than 1 or greater than `MAXIMUM_LENGTH` (98 characters).
+            If the length parameter is a boolean, less than 1, or greater than `MAXIMUM_LENGTH` (98 characters).
+
+        Warns
+        -----
+        DeprecationWarning
+            If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
         """
+        if length is not None:
+            _validate_length(length)
         resolved_length: int = self._length if length is None else length
-        if isinstance(resolved_length, bool) or resolved_length < 1:
-            msg = "Length must be at least 1 character."
-            raise ValueError(msg)
-        if resolved_length > MAXIMUM_LENGTH:
-            msg = "Length must never exceed 98 characters."
-            raise ValueError(msg)
 
         first_letter: str = utils.create_letter(random_generator=self._random)
 
@@ -136,15 +180,16 @@ class Cuid:  # pylint: disable=too-few-public-methods
         )
 
 
-def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
+def cuid_wrapper(length: Optional[int] = None) -> Callable[[], str]:
     """Wrap a single Cuid class instance and return a callable that generates a CUID string.
 
     Parameters
     ----------
-    length : int, default=DEFAULT_LENGTH (24)
-        The length parameter is an integer that determines the maximum length of the generated string.
-        It has a default value of DEFAULT_LENGTH (24).
+    length : int, optional
+        The length parameter is an optional integer that determines the length of the generated string.
+        If it is not provided, `DEFAULT_LENGTH` (24) is used.
         A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
+        Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a DeprecationWarning.
 
     Returns
     -------
@@ -154,9 +199,14 @@ def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
     Raises
     ------
     ValueError
-        If the length parameter is less than 1 or greater than `MAXIMUM_LENGTH` (98 characters).
+        If the length parameter is a boolean, less than 1, or greater than `MAXIMUM_LENGTH` (98 characters).
+
+    Warns
+    -----
+    DeprecationWarning
+        If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
     """
-    cuid_generator: Cuid = Cuid(length=length)
+    cuid_generator: Cuid = Cuid(length=DEFAULT_LENGTH if length is None else length)
 
     def cuid() -> str:
         return cuid_generator.generate()
