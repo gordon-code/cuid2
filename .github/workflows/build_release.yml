@@ -24,12 +24,15 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          python-version: 3.12
+          python-version: "3.13"
       - name: Build Release
-        run: uv build
+        run: uv version --no-sync "$VERSION_NUMBER" && uv build
         env:
-          PDM_BUILD_SCM_VERSION: ${{ inputs.versionNumber }}
+          VERSION_NUMBER: ${{ inputs.versionNumber }}
       - name: Publish Release
         run: uv publish
       - name: Create GitHub Release
-        run: gh release create v${{inputs.versionNumber}} --latest --generate-notes dist/*
+        run: gh release create "v$VERSION_NUMBER" --latest --generate-notes dist/*
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_NUMBER: ${{ inputs.versionNumber }}

@@ -1,9 +1,8 @@
 # cuid2
 
-[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://img.shields.io/badge/python-3.8+-blue.svg)
-[![PyPi](https://img.shields.io/pypi/v/cuid2.svg)](https://pypi.python.org/pypi/cuid2)
-[![PyPi](https://img.shields.io/pypi/dm/cuid2.svg)](https://pypi.python.org/pypi/cuid2)
-[![cuid2](https://snyk.io/advisor/python/cuid2/badge.svg)](https://snyk.io/advisor/python/cuid2)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://pypi.org/project/cuid2/)
+[![PyPi](https://img.shields.io/pypi/v/cuid2.svg)](https://pypi.org/project/cuid2/)
+[![PyPi](https://img.shields.io/pypi/dm/cuid2.svg)](https://pypi.org/project/cuid2/)
 
 CUID2 for Python 3. Next generation GUIDs. Collision-resistant ids optimized for 
 horizontal scaling and performance.
