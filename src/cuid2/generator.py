@@ -9,7 +9,7 @@ from secrets import SystemRandom
 from typing import TYPE_CHECKING, Callable, Final, Optional, Protocol
 
 from cuid2 import utils
-from cuid2.utils import BIG_LENGTH
+from cuid2.utils import BIG_LENGTH, DEFAULT_LENGTH, INITIAL_COUNT_MAX, MAXIMUM_LENGTH, MIN_LENGTH
 
 if TYPE_CHECKING:
     from _random import Random
@@ -18,12 +18,6 @@ if TYPE_CHECKING:
         def __call__(self: FingerprintCallable, random_generator: Random) -> str: ...
 
 
-# ~22k hosts before 50% chance of initial counter collision
-# with a remaining counter range of 9.0e+15 in JavaScript.
-INITIAL_COUNT_MAX: Final[int] = 476782367
-DEFAULT_LENGTH: Final = 24
-MIN_LENGTH: Final[int] = 2
-MAXIMUM_LENGTH: Final = 98
 _CUID_REGEX: Final[re.Pattern[str]] = re.compile(r"^[a-z][0-9a-z]+\Z")
 
 
