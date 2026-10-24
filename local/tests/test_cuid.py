@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Callable
 import pytest
 
 from cuid2 import DEFAULT_LENGTH, INITIAL_COUNT_MAX, Cuid, cuid_wrapper
+from cuid2.cli import main as cli_main
+from cuid2.generator import MAXIMUM_LENGTH
 
 if TYPE_CHECKING:
     from unittest.mock import Mock
@@ -43,6 +45,18 @@ class TestCuid:
     def test_generate_really_long_length(self: "TestCuid") -> None:
         with pytest.raises(ValueError, match=r"Length must never exceed 98 characters\."):
             Cuid(length=100)
+        cuid = Cuid()
+        with pytest.raises(ValueError, match=r"Length must never exceed 98 characters\."):
+            cuid.generate(length=100)
+
+    #  Tests that Cuid and generate() raise ValueError when length is less than 1 or a boolean.
+    @pytest.mark.parametrize("invalid_length", [0, -1, True, False])
+    def test_generate_non_positive_length(self: "TestCuid", invalid_length: int) -> None:
+        with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
+            Cuid(length=invalid_length)
+        cuid = Cuid()
+        with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
+            cuid.generate(length=invalid_length)
 
     #  Tests that generate() works when length parameter is less than 2.
     def test_generate_length_less_than_2(self: "TestCuid") -> None:
@@ -188,3 +202,62 @@ class TestCuidWrapper:
         """Tests that the function returns a callable that generates a CUID string with the default length."""
         cuid_func: Callable[[], str] = cuid_wrapper()
         assert len(cuid_func()) == DEFAULT_LENGTH
+
+    @pytest.mark.parametrize("length", [1, 10, 32])
+    def test_cuid_wrapper_custom_length(self: "TestCuidWrapper", length: int) -> None:
+        """Tests that cuid_wrapper generates a CUID string with a specified length."""
+        cuid_func: Callable[[], str] = cuid_wrapper(length=length)
+        assert len(cuid_func()) == length
+
+    @pytest.mark.parametrize(
+        ("invalid_length", "expected_match"),
+        [
+            (0, r"Length must be at least 1 character\."),
+            (-1, r"Length must be at least 1 character\."),
+            (True, r"Length must be at least 1 character\."),
+            (MAXIMUM_LENGTH + 1, r"Length must never exceed 98 characters\."),
+        ],
+    )
+    def test_cuid_wrapper_invalid_length(
+        self: "TestCuidWrapper",
+        invalid_length: int,
+        expected_match: str,
+    ) -> None:
+        """Tests that cuid_wrapper raises ValueError when length is out of bounds."""
+        with pytest.raises(ValueError, match=expected_match):
+            cuid_wrapper(length=invalid_length)
+
+
+class TestCli:
+    def test_cli_default_length(self: "TestCli", capsys: pytest.CaptureFixture[str]) -> None:
+        """Tests that the CLI prints a default-length CUID when invoked without arguments."""
+        cli_main([])
+        output = capsys.readouterr().out.strip()
+        assert len(output) == DEFAULT_LENGTH
+        assert output[0].isalpha()
+
+    @pytest.mark.parametrize("length", [1, 10, 32])
+    def test_cli_custom_length(self: "TestCli", length: int, capsys: pytest.CaptureFixture[str]) -> None:
+        """Tests that the CLI prints a CUID of the requested custom length."""
+        cli_main([str(length)])
+        output = capsys.readouterr().out.strip()
+        assert len(output) == length
+        assert output[0].isalpha()
+
+    @pytest.mark.parametrize(
+        ("arg", "expected_match"),
+        [
+            ("0", r"Length must be at least 1 character\."),
+            ("-5", r"Length must be at least 1 character\."),
+            (str(MAXIMUM_LENGTH + 1), r"Length must never exceed 98 characters\."),
+        ],
+    )
+    def test_cli_invalid_lengths(self: "TestCli", arg: str, expected_match: str) -> None:
+        """Tests that the CLI rejects lengths <= 0 and > MAXIMUM_LENGTH."""
+        with pytest.raises(ValueError, match=expected_match):
+            cli_main([arg])
+
+    def test_cli_non_integer_argument(self: "TestCli") -> None:
+        """Tests that the CLI exits when given a non-integer argument."""
+        with pytest.raises(SystemExit):
+            cli_main(["invalid"])
