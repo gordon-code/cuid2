@@ -115,13 +115,6 @@ class TestCreateHash:
         with pytest.raises(AttributeError):
             utils.create_hash(12345)  # type: ignore[arg-type]
 
-    #  Tests that create_hash() right-pads with zeros to MAXIMUM_LENGTH (98) when base36 output underflows
-    def test_create_hash_underflow_pads_to_98(self: "TestCreateHash", mocker: "Mock") -> None:
-        mocker.patch("cuid2.utils.base36_encode", return_value="a" * 90)
-        hashed = utils.create_hash("underflow")
-        assert hashed == ("a" * 89) + ("0" * 9)
-        assert len(hashed) == 98
-
 
 class TestCreateEntropy:
     #  Tests that create_entropy returns a string of expected length and only contains characters

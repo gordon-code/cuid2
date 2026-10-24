@@ -9,7 +9,7 @@ from secrets import SystemRandom
 from typing import TYPE_CHECKING, Callable, Final, Optional, Protocol
 
 from cuid2 import utils
-from cuid2.utils import BIG_LENGTH, MAXIMUM_LENGTH
+from cuid2.utils import BIG_LENGTH
 
 if TYPE_CHECKING:
     from _random import Random
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 INITIAL_COUNT_MAX: Final[int] = 476782367
 DEFAULT_LENGTH: Final = 24
 MIN_LENGTH: Final[int] = 2
+MAXIMUM_LENGTH: Final = 98
 _CUID_REGEX: Final[re.Pattern[str]] = re.compile(r"^[a-z][0-9a-z]+\Z")
 
 
@@ -180,14 +181,14 @@ class Cuid:  # pylint: disable=too-few-public-methods
         )
 
 
-def cuid_wrapper(length: Optional[int] = None) -> Callable[[], str]:
+def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
     """Wrap a single Cuid class instance and return a callable that generates a CUID string.
 
     Parameters
     ----------
-    length : int, optional
-        The length parameter is an optional integer that determines the length of the generated string.
-        If it is not provided, `DEFAULT_LENGTH` (24) is used.
+    length : int, default=DEFAULT_LENGTH (24)
+        The length parameter is an integer that determines the maximum length of the generated string.
+        It has a default value of DEFAULT_LENGTH (24).
         A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
         Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a DeprecationWarning.
 
@@ -206,7 +207,7 @@ def cuid_wrapper(length: Optional[int] = None) -> Callable[[], str]:
     DeprecationWarning
         If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
     """
-    cuid_generator: Cuid = Cuid(length=DEFAULT_LENGTH if length is None else length)
+    cuid_generator: Cuid = Cuid(length=length)
 
     def cuid() -> str:
         return cuid_generator.generate()
