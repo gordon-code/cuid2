@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 from math import floor
 from secrets import SystemRandom
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
 INITIAL_COUNT_MAX: Final[int] = 476782367
 DEFAULT_LENGTH: Final = 24
 MAXIMUM_LENGTH: Final = 98
+_CUID_REGEX: Final[re.Pattern[str]] = re.compile(r"^[a-z][0-9a-z]+\Z")
 
 
 class Cuid:  # pylint: disable=too-few-public-methods
@@ -103,6 +105,35 @@ class Cuid:  # pylint: disable=too-few-public-methods
         hash_input: str = base36_time + salt + base36_count + self._fingerprint
 
         return first_letter + utils.create_hash(hash_input)[1:resolved_length]
+
+    @staticmethod
+    def is_cuid(cuid_str: str, min_length: int = 2, max_length: int = MAXIMUM_LENGTH) -> bool:
+        """Validates whether a given string is a valid CUID2 identifier.
+
+        Parameters
+        ----------
+        cuid_str : str
+            The string to validate as a CUID2 identifier.
+        min_length : int, default=2
+            The minimum allowed length of the identifier. Values below 2 have no effect, since a valid
+            identifier always has a leading letter followed by at least one more character.
+        max_length : int, default=MAXIMUM_LENGTH (98)
+            The maximum allowed length of the identifier. Values above `MAXIMUM_LENGTH` are clamped to it.
+
+        Returns
+        -------
+        bool
+            True if `cuid_str` is a string starting with a lowercase ASCII letter followed by
+            lowercase base36 characters and has length between `min_length` and `max_length`
+            inclusive; False otherwise. The length bounds can only narrow the range of valid
+            lengths (2 to `MAXIMUM_LENGTH`), never widen it.
+        """
+        max_length = min(max_length, MAXIMUM_LENGTH)
+        return (
+            isinstance(cuid_str, str)
+            and min_length <= len(cuid_str) <= max_length
+            and bool(_CUID_REGEX.match(cuid_str))
+        )
 
 
 def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
