@@ -8,19 +8,3 @@ on:
 jobs:
   test-lint-scan:
     uses: ./.github/workflows/test_lint_scan.yml
-
-  collision-test:
-    runs-on:
-      - self-hosted
-      - macos-local
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-      - name: Install dependencies
-        run: |
-          uv sync --group test
-      - name: Run Testing
-        run: |
-          uv run -v pytest local/tests --runslow

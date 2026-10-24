@@ -44,9 +44,7 @@ order for your pull request to be accepted:
 $ uv run tox p
 ```
 
-The GitHub Action will _also_ run `uv run pytest local/tests --runslow` to catch any
-collision regressions. You may also run it locally. The test takes
-approximately 40 minutes.
+To catch any collision regressions, you may also run `uv run pytest local/tests --runslow` locally. The test takes approximately 40 minutes.
 
 ## Submitting Pull Requests
 

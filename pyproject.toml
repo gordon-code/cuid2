@@ -60,7 +60,7 @@ typing = [
 legacy_tox_ini = """
     [tox]
     min_version = 4
-    env_list = py3{10,11,12}, check
+    env_list = py3{10,11,12,13,14}, check
     work_dir = local/.tox
     isolated_build = True
 
@@ -79,8 +79,8 @@ legacy_tox_ini = """
         typing
         test
     commands =
-        ruff check --fix src/ local/tests/
-        ruff format src/ local/tests/
+        ruff check src/ local/tests/
+        ruff format --check src/ local/tests/
         codespell src/ local/tests/
         pylint src/ local/tests/
         mypy src/ local/tests/

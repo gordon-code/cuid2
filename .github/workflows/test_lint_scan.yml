@@ -9,7 +9,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.10", 3.11, 3.12]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     runs-on: ${{ matrix.os }}
 
@@ -35,7 +35,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          python-version: 3.12
+          python-version: "3.13"
       - name: Install dependencies
         run: |
           uv sync --group tox
@@ -52,7 +52,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          python-version: 3.12
+          python-version: "3.13"
       - name: Install dependencies
         run: |
           uv sync --all-groups --no-install-project
@@ -63,6 +63,6 @@ jobs:
       - name: Perform Runtime Code Analysis
         uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         env:
-          CODEQL_EXTRACTOR_PYTHON_ANALYSIS_VERSION: 3.12
+          CODEQL_EXTRACTOR_PYTHON_ANALYSIS_VERSION: "3.13"
       - name: Perform Secure Code Analysis (Secrets)
         uses: trufflesecurity/trufflehog@bc3a3ae6e097580bdef61492c78f79a4651319df # main
