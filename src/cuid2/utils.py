@@ -15,7 +15,13 @@ except ImportError:
     from hashlib import sha512  # type: ignore[assignment] # pylint: disable=ungrouped-imports
 
 
-BIG_LENGTH: Final = 32
+# ~22k hosts before 50% chance of initial counter collision
+# with a remaining counter range of 9.0e+15 in JavaScript.
+INITIAL_COUNT_MAX: Final[int] = 476782367
+MIN_LENGTH: Final[int] = 2
+DEFAULT_LENGTH: Final[int] = 24
+BIG_LENGTH: Final[int] = 32
+MAXIMUM_LENGTH: Final[int] = 98
 
 
 if TYPE_CHECKING:

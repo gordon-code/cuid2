@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from math import floor
 from secrets import SystemRandom
 from timeit import repeat
@@ -7,9 +8,8 @@ from typing import TYPE_CHECKING, Callable
 
 import pytest
 
-from cuid2 import DEFAULT_LENGTH, INITIAL_COUNT_MAX, Cuid, cuid_wrapper
+from cuid2 import BIG_LENGTH, DEFAULT_LENGTH, INITIAL_COUNT_MAX, MAXIMUM_LENGTH, MIN_LENGTH, Cuid, cuid_wrapper
 from cuid2.cli import main as cli_main
-from cuid2.generator import MAXIMUM_LENGTH
 
 if TYPE_CHECKING:
     from unittest.mock import Mock
@@ -45,14 +45,15 @@ class TestCuid:
 
     #  Tests that generate() works when length parameter is really long.
     def test_generate_really_long_length(self: "TestCuid") -> None:
-        with pytest.raises(ValueError, match=r"Length must never exceed 98 characters\."):
-            Cuid(length=100)
-        cuid = Cuid()
-        with pytest.raises(ValueError, match=r"Length must never exceed 98 characters\."):
-            cuid.generate(length=100)
+        for invalid_length in (99, 100):
+            with pytest.raises(ValueError, match=r"Length must never exceed 98 characters\."):
+                Cuid(length=invalid_length)
+            cuid = Cuid()
+            with pytest.raises(ValueError, match=r"Length must never exceed 98 characters\."):
+                cuid.generate(length=invalid_length)
 
     #  Tests that Cuid and generate() raise ValueError when length is less than 1 or a boolean.
-    @pytest.mark.parametrize("invalid_length", [0, -1, True, False])
+    @pytest.mark.parametrize("invalid_length", [0, -1, -5, True, False])
     def test_generate_non_positive_length(self: "TestCuid", invalid_length: int) -> None:
         with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
             Cuid(length=invalid_length)
@@ -63,7 +64,42 @@ class TestCuid:
     #  Tests that generate() works when length parameter is less than 2.
     def test_generate_length_less_than_2(self: "TestCuid") -> None:
         cuid = Cuid()
-        assert len(cuid.generate(length=1)) == 1
+        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
+            assert len(cuid.generate(length=1)) == 1
+        assert record[0].filename == __file__
+
+    #  Tests that lengths outside MIN_LENGTH..BIG_LENGTH (1 and 33..98) emit DeprecationWarning attributed to caller.
+    @pytest.mark.parametrize("deprecated_length", [1, BIG_LENGTH + 1, MAXIMUM_LENGTH - 2])
+    def test_deprecated_lengths_emit_warning(self: "TestCuid", deprecated_length: int) -> None:
+        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
+            cuid_instance = Cuid(length=deprecated_length)
+        assert record[0].filename == __file__
+        assert len(cuid_instance.generate()) == deprecated_length
+
+        cuid = Cuid()
+        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
+            generated = cuid.generate(length=deprecated_length)
+        assert record[0].filename == __file__
+        assert len(generated) == deprecated_length
+
+        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
+            wrapper = cuid_wrapper(length=deprecated_length)
+        assert record[0].filename == __file__
+        assert len(wrapper()) == deprecated_length
+
+    #  Tests that specification boundary lengths MIN_LENGTH (2) and BIG_LENGTH (32) emit no DeprecationWarning.
+    @pytest.mark.parametrize("valid_length", [MIN_LENGTH, BIG_LENGTH])
+    def test_spec_boundary_lengths_emit_no_warning(self: "TestCuid", valid_length: int) -> None:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            cuid_instance = Cuid(length=valid_length)
+            assert len(cuid_instance.generate()) == valid_length
+
+            cuid = Cuid()
+            assert len(cuid.generate(length=valid_length)) == valid_length
+
+            wrapper = cuid_wrapper(length=valid_length)
+            assert len(wrapper()) == valid_length
 
     #  Tests that multiple instances of Cuid generate unique IDs.
     def test_generate_multiple_instances_unique_ids(self: "TestCuid") -> None:
@@ -388,9 +424,13 @@ class TestIsCuid:
     #  The exact length is only asserted below MAXIMUM_LENGTH - 1: at 97 and 98 characters the generator
     #  occasionally returns a shorter id (the SHA3-512 base36 digest is not always long enough), but
     #  such ids are still valid.
-    @pytest.mark.parametrize("length", [2, 3, 10, DEFAULT_LENGTH, 50, MAXIMUM_LENGTH - 2, MAXIMUM_LENGTH])
+    @pytest.mark.parametrize("length", [2, 3, 10, DEFAULT_LENGTH, BIG_LENGTH, 50, MAXIMUM_LENGTH - 2, MAXIMUM_LENGTH])
     def test_is_cuid_accepts_generated_ids(self: "TestIsCuid", length: int) -> None:
-        cuid = Cuid(length=length)
+        if length > BIG_LENGTH:
+            with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range"):
+                cuid = Cuid(length=length)
+        else:
+            cuid = Cuid(length=length)
         for _ in range(250):
             generated = cuid.generate()
             assert len(generated) <= length
@@ -416,7 +456,8 @@ class TestIsCuid:
     #  Documents a known asymmetry: the generator can emit 1-character ids, but a valid CUID2 needs 2+ characters.
     #  If the generator's minimum length is ever raised to 2, this test should be updated.
     def test_is_cuid_rejects_single_character_generated_id(self: "TestIsCuid") -> None:
-        generated = Cuid(length=1).generate()
+        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range"):
+            generated = Cuid(length=1).generate()
         assert len(generated) == 1
         assert Cuid.is_cuid(generated) is False
         assert Cuid.is_cuid(generated, min_length=1) is False
@@ -458,11 +499,22 @@ class TestCuidWrapper:
         cuid_func: Callable[[], str] = cuid_wrapper()
         assert len(cuid_func()) == DEFAULT_LENGTH
 
-    @pytest.mark.parametrize("length", [1, 10, 32])
+    @pytest.mark.parametrize("length", [MIN_LENGTH, 10, BIG_LENGTH])
     def test_cuid_wrapper_custom_length(self: "TestCuidWrapper", length: int) -> None:
         """Tests that cuid_wrapper generates a CUID string with a specified length."""
         cuid_func: Callable[[], str] = cuid_wrapper(length=length)
         assert len(cuid_func()) == length
+
+    @pytest.mark.parametrize("length", [1, BIG_LENGTH + 1, MAXIMUM_LENGTH])
+    def test_cuid_wrapper_deprecated_length(self: "TestCuidWrapper", length: int) -> None:
+        """Tests that cuid_wrapper emits DeprecationWarning for lengths outside MIN_LENGTH..BIG_LENGTH."""
+        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
+            cuid_func: Callable[[], str] = cuid_wrapper(length=length)
+        assert record[0].filename == __file__
+        generated = cuid_func()
+        assert len(generated) <= length
+        if length < MAXIMUM_LENGTH - 1:
+            assert len(generated) == length
 
     @pytest.mark.parametrize(
         ("invalid_length", "expected_match"),
@@ -491,12 +543,23 @@ class TestCli:
         assert len(output) == DEFAULT_LENGTH
         assert output[0].isalpha()
 
-    @pytest.mark.parametrize("length", [1, 10, 32])
+    @pytest.mark.parametrize("length", [MIN_LENGTH, 10, BIG_LENGTH])
     def test_cli_custom_length(self: "TestCli", length: int, capsys: pytest.CaptureFixture[str]) -> None:
         """Tests that the CLI prints a CUID of the requested custom length."""
         cli_main([str(length)])
         output = capsys.readouterr().out.strip()
         assert len(output) == length
+        assert output[0].isalpha()
+
+    @pytest.mark.parametrize("length", [1, MAXIMUM_LENGTH])
+    def test_cli_boundary_lengths(self: "TestCli", length: int, capsys: pytest.CaptureFixture[str]) -> None:
+        """Tests that the CLI emits DeprecationWarning and prints a CUID for deprecated boundary lengths."""
+        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range"):
+            cli_main([str(length)])
+        output = capsys.readouterr().out.strip()
+        assert len(output) <= length
+        if length < MAXIMUM_LENGTH - 1:
+            assert len(output) == length
         assert output[0].isalpha()
 
     @pytest.mark.parametrize(
