@@ -1,5 +1,16 @@
 name: Continuous Integration
 on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
   workflow_dispatch: {}
   schedule:
     # Weekly every Saturday at midnight
