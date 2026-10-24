@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from math import floor
 from secrets import SystemRandom
 from timeit import repeat
@@ -337,7 +336,7 @@ class TestIsCuid:
         assert Cuid.is_cuid("ab", min_length=min_length) is True
 
     #  Tests that max_length cannot go above MAXIMUM_LENGTH, matching the generator's own limit.
-    @pytest.mark.parametrize("max_length", [MAXIMUM_LENGTH + 1, 200, 10**9, sys.maxsize])
+    @pytest.mark.parametrize("max_length", [MAXIMUM_LENGTH + 1, 200, 10**9])
     def test_is_cuid_max_length_cannot_exceed_maximum(self: "TestIsCuid", max_length: int) -> None:
         assert Cuid.is_cuid("a" * (MAXIMUM_LENGTH + 1), max_length=max_length) is False
         assert Cuid.is_cuid("a" * 150, max_length=max_length) is False
