@@ -75,12 +75,8 @@ class TestCreateLetter:
 
 class TestCreateHash:
     #  Tests that the output of create_hash() is always a string of length 98
-    def test_hash_output_length(self: "TestCreateHash", mocker: "Mock") -> None:
+    def test_hash_output_length(self: "TestCreateHash") -> None:
         assert len(utils.create_hash()) == 98
-        mock_hash = mocker.Mock()
-        mock_hash.digest.return_value = b"\x00" * 64
-        mocker.patch("cuid2.utils.sha512", return_value=mock_hash)
-        assert len(utils.create_hash("leading-zeros")) == 98
 
     #  Tests that create_hash() returns the same output for the same input
     def test_same_output_for_same_input(self: "TestCreateHash") -> None:

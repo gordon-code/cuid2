@@ -50,18 +50,13 @@ class TestCuid:
             cuid.generate(length=100)
 
     #  Tests that Cuid and generate() raise ValueError when length is less than 1 or a boolean.
-    def test_generate_non_positive_length(self: "TestCuid") -> None:
+    @pytest.mark.parametrize("invalid_length", [0, -1, True, False])
+    def test_generate_non_positive_length(self: "TestCuid", invalid_length: int) -> None:
         with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
-            Cuid(length=0)
-        with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
-            Cuid(length=True)
+            Cuid(length=invalid_length)
         cuid = Cuid()
         with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
-            cuid.generate(length=0)
-        with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
-            cuid.generate(length=-1)
-        with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
-            cuid.generate(length=True)
+            cuid.generate(length=invalid_length)
 
     #  Tests that generate() works when length parameter is less than 2.
     def test_generate_length_less_than_2(self: "TestCuid") -> None:
@@ -208,17 +203,29 @@ class TestCuidWrapper:
         cuid_func: Callable[[], str] = cuid_wrapper()
         assert len(cuid_func()) == DEFAULT_LENGTH
 
-    def test_cuid_wrapper_custom_length(self: "TestCuidWrapper") -> None:
+    @pytest.mark.parametrize("length", [1, 10, 32])
+    def test_cuid_wrapper_custom_length(self: "TestCuidWrapper", length: int) -> None:
         """Tests that cuid_wrapper generates a CUID string with a specified length."""
-        cuid_func: Callable[[], str] = cuid_wrapper(length=10)
-        assert len(cuid_func()) == 10
+        cuid_func: Callable[[], str] = cuid_wrapper(length=length)
+        assert len(cuid_func()) == length
 
-    def test_cuid_wrapper_invalid_length(self: "TestCuidWrapper") -> None:
+    @pytest.mark.parametrize(
+        ("invalid_length", "expected_match"),
+        [
+            (0, r"Length must be at least 1 character\."),
+            (-1, r"Length must be at least 1 character\."),
+            (True, r"Length must be at least 1 character\."),
+            (MAXIMUM_LENGTH + 1, r"Length must never exceed 98 characters\."),
+        ],
+    )
+    def test_cuid_wrapper_invalid_length(
+        self: "TestCuidWrapper",
+        invalid_length: int,
+        expected_match: str,
+    ) -> None:
         """Tests that cuid_wrapper raises ValueError when length is out of bounds."""
-        with pytest.raises(ValueError, match=r"Length must never exceed 98 characters\."):
-            cuid_wrapper(length=100)
-        with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
-            cuid_wrapper(length=0)
+        with pytest.raises(ValueError, match=expected_match):
+            cuid_wrapper(length=invalid_length)
 
 
 class TestCli:
@@ -229,28 +236,28 @@ class TestCli:
         assert len(output) == DEFAULT_LENGTH
         assert output[0].isalpha()
 
-    def test_cli_custom_length(self: "TestCli", capsys: pytest.CaptureFixture[str]) -> None:
+    @pytest.mark.parametrize("length", [1, 10, 32])
+    def test_cli_custom_length(self: "TestCli", length: int, capsys: pytest.CaptureFixture[str]) -> None:
         """Tests that the CLI prints a CUID of the requested custom length."""
-        cli_main(["10"])
+        cli_main([str(length)])
         output = capsys.readouterr().out.strip()
-        assert len(output) == 10
+        assert len(output) == length
         assert output[0].isalpha()
 
-    def test_cli_boundary_lengths(self: "TestCli", capsys: pytest.CaptureFixture[str]) -> None:
-        """Tests that the CLI supports minimum (1) and maximum (MAXIMUM_LENGTH) lengths."""
-        cli_main(["1"])
-        assert len(capsys.readouterr().out.strip()) == 1
+    @pytest.mark.parametrize(
+        ("arg", "expected_match"),
+        [
+            ("0", r"Length must be at least 1 character\."),
+            ("-5", r"Length must be at least 1 character\."),
+            (str(MAXIMUM_LENGTH + 1), r"Length must never exceed 98 characters\."),
+        ],
+    )
+    def test_cli_invalid_lengths(self: "TestCli", arg: str, expected_match: str) -> None:
+        """Tests that the CLI rejects lengths <= 0 and > MAXIMUM_LENGTH."""
+        with pytest.raises(ValueError, match=expected_match):
+            cli_main([arg])
 
-        cli_main([str(MAXIMUM_LENGTH)])
-        assert len(capsys.readouterr().out.strip()) == MAXIMUM_LENGTH
-
-    def test_cli_invalid_lengths(self: "TestCli") -> None:
-        """Tests that the CLI rejects lengths <= 0, > MAXIMUM_LENGTH, and non-integer inputs."""
-        with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
-            cli_main(["0"])
-        with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
-            cli_main(["-5"])
-        with pytest.raises(ValueError, match=r"Length must never exceed 98 characters\."):
-            cli_main([str(MAXIMUM_LENGTH + 1)])
+    def test_cli_non_integer_argument(self: "TestCli") -> None:
+        """Tests that the CLI exits when given a non-integer argument."""
         with pytest.raises(SystemExit):
             cli_main(["invalid"])

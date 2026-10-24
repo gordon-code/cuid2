@@ -105,14 +105,14 @@ class Cuid:  # pylint: disable=too-few-public-methods
         return first_letter + utils.create_hash(hash_input)[1:resolved_length]
 
 
-def cuid_wrapper(length: Optional[int] = None) -> Callable[[], str]:
+def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
     """Wrap a single Cuid class instance and return a callable that generates a CUID string.
 
     Parameters
     ----------
-    length : int, optional
-        The length parameter is an optional integer value that specifies the length of the generated string.
-        If it is not provided, the default length value provided during class initialization is used.
+    length : int, default=DEFAULT_LENGTH (24)
+        The length parameter is an integer that determines the maximum length of the generated string.
+        It has a default value of DEFAULT_LENGTH (24).
         A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
 
     Returns
@@ -125,7 +125,7 @@ def cuid_wrapper(length: Optional[int] = None) -> Callable[[], str]:
     ValueError
         If the length parameter is less than 1 or greater than `MAXIMUM_LENGTH` (98 characters).
     """
-    cuid_generator: Cuid = Cuid(length=length) if length is not None else Cuid()
+    cuid_generator: Cuid = Cuid(length=length)
 
     def cuid() -> str:
         return cuid_generator.generate()

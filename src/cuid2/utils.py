@@ -16,7 +16,6 @@ except ImportError:
 
 
 BIG_LENGTH: Final = 32
-HASH_LENGTH: Final = 99
 
 
 if TYPE_CHECKING:
@@ -132,7 +131,7 @@ def create_hash(data: str = "") -> str:
     hashed_int: int = int.from_bytes(hashed_value.digest(), byteorder="big")
 
     # Drop the first character because it will bias the histogram to the left.
-    return base36_encode(hashed_int).zfill(HASH_LENGTH)[1:]
+    return base36_encode(hashed_int)[1:]
 
 
 def create_letter(random_generator: Random) -> str:
