@@ -70,4 +70,10 @@ CUID_GENERATOR: Cuid = Cuid(length=10)
 def main():
     my_cuid: str = CUID_GENERATOR.generate()
     next_cuid: str = CUID_GENERATOR.generate()
+
+    # Validate CUID
+    print(Cuid.is_cuid(my_cuid))  # True
 ```
+
+`Cuid.is_cuid` also accepts optional `min_length` and `max_length` arguments to tighten the allowed length.
+The bounds are clamped to 2 and 98 characters, so they can narrow but never widen what is considered valid.
