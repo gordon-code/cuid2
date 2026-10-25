@@ -146,14 +146,14 @@ class Cuid:  # pylint: disable=too-few-public-methods
         return first_letter + utils.create_hash(hash_input)[1:resolved_length]
 
     @staticmethod
-    def is_cuid(cuid_str: str, min_length: int = 2, max_length: int = MAXIMUM_LENGTH) -> bool:
+    def is_cuid(cuid_str: str, min_length: int = MIN_LENGTH, max_length: int = MAXIMUM_LENGTH) -> bool:
         """Validates whether a given string is a valid CUID2 identifier.
 
         Parameters
         ----------
         cuid_str : str
             The string to validate as a CUID2 identifier.
-        min_length : int, default=2
+        min_length : int, default=MIN_LENGTH (2)
             The minimum allowed length of the identifier. Values below 2 have no effect, since a valid
             identifier always has a leading letter followed by at least one more character.
         max_length : int, default=MAXIMUM_LENGTH (98)
@@ -175,8 +175,49 @@ class Cuid:  # pylint: disable=too-few-public-methods
         )
 
 
+_DEFAULT_GENERATOR: Optional[Cuid] = None
+
+
+def create_id(length: Optional[int] = None) -> str:
+    """Generate a CUID2 string using the module-level lazy default generator.
+
+    Parameters
+    ----------
+    length : int, optional
+        The optional length of the generated CUID2 string. Defaults to `DEFAULT_LENGTH` (24) when omitted.
+        A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
+        Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a DeprecationWarning.
+
+    Returns
+    -------
+    str
+        A collision-resistant, base36-encoded CUID2 identifier starting with a lowercase ASCII letter.
+
+    Raises
+    ------
+    ValueError
+        If the length parameter is a boolean, less than 1, or greater than `MAXIMUM_LENGTH` (98 characters).
+
+    Warns
+    -----
+    DeprecationWarning
+        If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
+    """
+    global _DEFAULT_GENERATOR  # noqa: PLW0603  # pylint: disable=global-statement
+    if _DEFAULT_GENERATOR is None:
+        _DEFAULT_GENERATOR = Cuid()
+    return _DEFAULT_GENERATOR.generate(length=length)
+
+
+is_cuid = Cuid.is_cuid
+
+
 def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
-    """Wrap a single Cuid class instance and return a callable that generates a CUID string.
+    """Wrap `create_id` and return a zero-argument callable that generates a CUID string.
+
+    .. deprecated:: 2.1.0
+        `cuid_wrapper` is deprecated and will be removed in v3.0.0.
+        Use `create_id` or `functools.partial(create_id, length=...)` instead.
 
     Parameters
     ----------
@@ -199,11 +240,18 @@ def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
     Warns
     -----
     DeprecationWarning
-        If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
+        Always emitted because `cuid_wrapper` is deprecated and will be removed in v3.0.0,
+        and also emitted if the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
     """
-    cuid_generator: Cuid = Cuid(length=length)
+    _validate_length(length)
+    warnings.warn(
+        "cuid_wrapper() is deprecated and will be removed in v3.0.0. "
+        "Use create_id() or functools.partial(create_id, length=...) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
     def cuid() -> str:
-        return cuid_generator.generate()
+        return create_id(length=length)
 
     return cuid

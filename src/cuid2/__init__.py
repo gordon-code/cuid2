@@ -7,7 +7,9 @@ from .generator import (
     MAXIMUM_LENGTH,
     MIN_LENGTH,
     Cuid,
+    create_id,
     cuid_wrapper,
+    is_cuid,
 )
 
 __all__ = [
@@ -17,5 +19,7 @@ __all__ = [
     "MAXIMUM_LENGTH",
     "MIN_LENGTH",
     "Cuid",
+    "create_id",
     "cuid_wrapper",
+    "is_cuid",
 ]

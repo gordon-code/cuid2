@@ -11,7 +11,17 @@ import pytest
 
 import cuid2.cli
 import cuid2.generator
-from cuid2 import BIG_LENGTH, DEFAULT_LENGTH, INITIAL_COUNT_MAX, MAXIMUM_LENGTH, MIN_LENGTH, Cuid, cuid_wrapper
+from cuid2 import (
+    BIG_LENGTH,
+    DEFAULT_LENGTH,
+    INITIAL_COUNT_MAX,
+    MAXIMUM_LENGTH,
+    MIN_LENGTH,
+    Cuid,
+    create_id,
+    cuid_wrapper,
+    is_cuid,
+)
 from cuid2.cli import main as cli_main
 
 if TYPE_CHECKING:
@@ -86,9 +96,9 @@ class TestCuid:
         assert len(generated) == deprecated_length
 
         with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
-            wrapper = cuid_wrapper(length=deprecated_length)
+            generated_from_create_id = create_id(length=deprecated_length)
         assert record[0].filename == __file__
-        assert len(wrapper()) == deprecated_length
+        assert len(generated_from_create_id) == deprecated_length
 
     #  Tests that specification boundary lengths MIN_LENGTH (2) and BIG_LENGTH (32) emit no DeprecationWarning.
     @pytest.mark.parametrize("valid_length", [MIN_LENGTH, BIG_LENGTH])
@@ -101,8 +111,7 @@ class TestCuid:
             cuid = Cuid()
             assert len(cuid.generate(length=valid_length)) == valid_length
 
-            wrapper = cuid_wrapper(length=valid_length)
-            assert len(wrapper()) == valid_length
+            assert len(create_id(length=valid_length)) == valid_length
 
     #  Tests that multiple instances of Cuid generate unique IDs.
     def test_generate_multiple_instances_unique_ids(self: "TestCuid") -> None:
@@ -444,7 +453,8 @@ class TestIsCuid:
     #  Tests that ids generated via generate(length=...) and via the wrapper also validate.
     def test_is_cuid_accepts_generate_override_and_wrapper(self: "TestIsCuid") -> None:
         cuid = Cuid()
-        wrapper = cuid_wrapper()
+        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
+            wrapper = cuid_wrapper()
         for _ in range(250):
             assert Cuid.is_cuid(cuid.generate(length=8)) is True
             assert Cuid.is_cuid(wrapper()) is True
@@ -476,21 +486,113 @@ class TestIsCuid:
         assert Cuid.is_cuid(generated[:-1] + "!") is False
         assert Cuid.is_cuid("") is False
 
+    #  Tests that top-level is_cuid is exported and behaves identically to Cuid.is_cuid.
+    def test_top_level_is_cuid_export(self: "TestIsCuid") -> None:
+        assert is_cuid is Cuid.is_cuid
+        generated = Cuid().generate()
+        assert is_cuid(generated) is True
+        assert is_cuid("yi7rqj1trke") is True
+        assert is_cuid("NOT-A-CUID") is False
+        assert is_cuid("") is False
+        assert is_cuid(generated, min_length=DEFAULT_LENGTH, max_length=DEFAULT_LENGTH) is True
+        assert is_cuid(generated, min_length=DEFAULT_LENGTH + 1) is False
+
+
+@pytest.fixture(autouse=True)
+def _reset_default_generator(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Restores _DEFAULT_GENERATOR after each test while preserving its import-time value."""
+    monkeypatch.setattr(cuid2.generator, "_DEFAULT_GENERATOR", cuid2.generator._DEFAULT_GENERATOR)
+
+
+class TestCreateId:
+    def test_create_id_lazy_singleton(self: "TestCreateId", mocker: "Mock") -> None:
+        """Tests that create_id() lazily initializes _DEFAULT_GENERATOR and reuses the singleton instance."""
+        assert cuid2.generator._DEFAULT_GENERATOR is None
+        spy = mocker.spy(cuid2.generator, "Cuid")
+        first_id: str = create_id()
+        first_generator = cuid2.generator._DEFAULT_GENERATOR
+        assert isinstance(first_generator, Cuid)
+        assert spy.call_count == 1
+        second_id: str = create_id()
+        assert cuid2.generator._DEFAULT_GENERATOR is first_generator
+        assert spy.call_count == 1
+        assert first_id != second_id
+
+    def test_create_id_default_length(self: "TestCreateId") -> None:
+        """Tests that create_id() generates a valid 24-character CUID2 string by default."""
+        generated: str = create_id()
+        assert isinstance(generated, str)
+        assert len(generated) == DEFAULT_LENGTH
+        assert is_cuid(generated) is True
+
+    @pytest.mark.parametrize("length", [MIN_LENGTH, 16, BIG_LENGTH])
+    def test_create_id_custom_length(self: "TestCreateId", length: int) -> None:
+        """Tests that create_id() generates a valid CUID2 string of the specified length."""
+        generated: str = create_id(length=length)
+        assert len(generated) == length
+        assert is_cuid(generated) is True
+
+    def test_create_id_unique_ids(self: "TestCreateId") -> None:
+        """Tests that consecutive create_id() calls return distinct IDs."""
+        assert create_id() != create_id()
+
+    @pytest.mark.parametrize("length", [1, BIG_LENGTH + 1])
+    def test_create_id_deprecated_length(self: "TestCreateId", length: int) -> None:
+        """Tests that create_id() emits DeprecationWarning attributed to the caller for lengths outside 2..32."""
+        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
+            generated: str = create_id(length=length)
+        assert len(generated) == length
+        assert record[0].filename == __file__
+
+    @pytest.mark.parametrize(
+        ("invalid_length", "expected_match"),
+        [
+            (0, r"Length must be at least 1 character\."),
+            (-1, r"Length must be at least 1 character\."),
+            (True, r"Length must be at least 1 character\."),
+            (MAXIMUM_LENGTH + 1, r"Length must never exceed 98 characters\."),
+        ],
+    )
+    def test_create_id_invalid_length(
+        self: "TestCreateId",
+        invalid_length: int,
+        expected_match: str,
+    ) -> None:
+        """Tests that create_id() raises ValueError when length is out of bounds."""
+        with pytest.raises(ValueError, match=expected_match):
+            create_id(length=invalid_length)
+
 
 class TestCuidWrapper:
     def test_cuid_wrapper_is_callable(self: "TestCuidWrapper") -> None:
-        """Tests that the function returns a callable."""
-        cuid_func: Callable[[], str] = cuid_wrapper()
+        """Tests that the function emits DeprecationWarning and returns a callable."""
+        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated") as record:
+            cuid_func: Callable[[], str] = cuid_wrapper()
+        assert record[0].filename == __file__
         assert callable(cuid_func)
+
+    def test_cuid_wrapper_delegates_to_create_id_lazily(self: "TestCuidWrapper", mocker: "Mock") -> None:
+        """Tests that cuid_wrapper() is lazy at creation time and delegates to create_id()."""
+        spy = mocker.spy(cuid2.generator, "create_id")
+        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
+            cuid_func: Callable[[], str] = cuid_wrapper(length=10)
+        assert cuid2.generator._DEFAULT_GENERATOR is None
+        assert spy.call_count == 0
+        generated: str = cuid_func()
+        assert len(generated) == 10
+        assert spy.call_count == 1
+        spy.assert_called_once_with(length=10)
 
     def test_cuid_wrapper_return_type(self: "TestCuidWrapper") -> None:
         """Tests that the function returns a callable that generates a CUID string."""
-        cuid_func: Callable[[], str] = cuid_wrapper()
+        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
+            cuid_func: Callable[[], str] = cuid_wrapper()
         assert isinstance(cuid_func(), str)
 
     def test_cuid_wrapper_no_parameters(self: "TestCuidWrapper") -> None:
         """Tests that the function doesn't accept any parameters."""
-        cuid_func: Callable[[], str] = cuid_wrapper()
+        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
+            cuid_func: Callable[[], str] = cuid_wrapper()
         with pytest.raises(
             TypeError,
             match="cuid\\(\\) takes 0 positional arguments but 1 was given",
@@ -499,22 +601,29 @@ class TestCuidWrapper:
 
     def test_cuid_wrapper_length(self: "TestCuidWrapper") -> None:
         """Tests that the function returns a callable that generates a CUID string with the default length."""
-        cuid_func: Callable[[], str] = cuid_wrapper()
+        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
+            cuid_func: Callable[[], str] = cuid_wrapper()
         assert len(cuid_func()) == DEFAULT_LENGTH
 
     @pytest.mark.parametrize("length", [MIN_LENGTH, 10, BIG_LENGTH])
     def test_cuid_wrapper_custom_length(self: "TestCuidWrapper", length: int) -> None:
         """Tests that cuid_wrapper generates a CUID string with a specified length."""
-        cuid_func: Callable[[], str] = cuid_wrapper(length=length)
+        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
+            cuid_func: Callable[[], str] = cuid_wrapper(length=length)
         assert len(cuid_func()) == length
 
     @pytest.mark.parametrize("length", [1, BIG_LENGTH + 1, MAXIMUM_LENGTH])
     def test_cuid_wrapper_deprecated_length(self: "TestCuidWrapper", length: int) -> None:
         """Tests that cuid_wrapper emits DeprecationWarning for lengths outside MIN_LENGTH..BIG_LENGTH."""
-        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
+        with pytest.warns(
+            DeprecationWarning,
+            match=r"(outside the CUID2 specification range|cuid_wrapper\(\) is deprecated)",
+        ) as record:
             cuid_func: Callable[[], str] = cuid_wrapper(length=length)
-        assert record[0].filename == __file__
-        generated = cuid_func()
+        assert len(record) == 2
+        assert all(warning.filename == __file__ for warning in record)
+        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range"):
+            generated = cuid_func()
         assert len(generated) <= length
         if length < MAXIMUM_LENGTH - 1:
             assert len(generated) == length
@@ -590,9 +699,10 @@ class TestCli:
     ) -> None:
         """Tests that importing cuid2.cli does not initialize a CUID generator until main() is called."""
         try:
-            spy = mocker.spy(cuid2.generator, "cuid_wrapper")
+            spy = mocker.spy(cuid2.generator, "create_id")
             importlib.reload(cuid2.cli)
             assert spy.call_count == 0
+            assert cuid2.generator._DEFAULT_GENERATOR is None
             assert not hasattr(cuid2.cli, "generate_cuid")
             cuid2.cli.main([])
             assert spy.call_count == 1
