@@ -489,7 +489,7 @@ class TestIsCuid:
     #  Tests that top-level is_cuid is exported and behaves identically to Cuid.is_cuid.
     def test_top_level_is_cuid_export(self: "TestIsCuid") -> None:
         assert is_cuid is Cuid.is_cuid
-        generated = create_id()
+        generated = Cuid().generate()
         assert is_cuid(generated) is True
         assert is_cuid("yi7rqj1trke") is True
         assert is_cuid("NOT-A-CUID") is False
@@ -499,6 +499,24 @@ class TestIsCuid:
 
 
 class TestCreateId:
+    @pytest.fixture(autouse=True)
+    def _reset_default_generator(self: "TestCreateId", monkeypatch: pytest.MonkeyPatch) -> None:
+        """Restores _DEFAULT_GENERATOR after each test while preserving its import-time value."""
+        monkeypatch.setattr(cuid2.generator, "_DEFAULT_GENERATOR", cuid2.generator._DEFAULT_GENERATOR)
+
+    def test_create_id_lazy_singleton(self: "TestCreateId", mocker: "Mock") -> None:
+        """Tests that create_id() lazily initializes _DEFAULT_GENERATOR and reuses the singleton instance."""
+        assert cuid2.generator._DEFAULT_GENERATOR is None
+        spy = mocker.spy(cuid2.generator, "Cuid")
+        first_id: str = create_id()
+        first_generator = cuid2.generator._DEFAULT_GENERATOR
+        assert isinstance(first_generator, Cuid)
+        assert spy.call_count == 1
+        second_id: str = create_id()
+        assert cuid2.generator._DEFAULT_GENERATOR is first_generator
+        assert spy.call_count == 1
+        assert first_id != second_id
+
     def test_create_id_default_length(self: "TestCreateId") -> None:
         """Tests that create_id() generates a valid 24-character CUID2 string by default."""
         generated: str = create_id()
