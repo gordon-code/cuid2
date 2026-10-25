@@ -3,17 +3,9 @@ from __future__ import annotations
 import os
 import socket
 import string
+from hashlib import sha3_512
 from math import floor
 from typing import TYPE_CHECKING, Callable, Final, Optional
-
-try:
-    from hashlib import sha3_512 as sha512
-except ImportError:
-    import warnings
-
-    warnings.warn("sha3_512 is not available, falling back to sha512, this is less secure!", UserWarning, stacklevel=2)
-    from hashlib import sha512  # type: ignore[assignment] # pylint: disable=ungrouped-imports
-
 
 # ~22k hosts before 50% chance of initial counter collision
 # with a remaining counter range of 9.0e+15 in JavaScript.
@@ -22,6 +14,11 @@ MIN_LENGTH: Final[int] = 2
 DEFAULT_LENGTH: Final[int] = 24
 BIG_LENGTH: Final[int] = 32
 MAXIMUM_LENGTH: Final[int] = 98
+
+ASCII_LOWERCASE: Final[str] = string.ascii_lowercase
+ASCII_LOWERCASE_LEN: Final[int] = len(ASCII_LOWERCASE)
+BASE36_ALPHABET: Final[str] = string.digits + string.ascii_lowercase
+BASE36_RADIX: Final[int] = len(BASE36_ALPHABET)
 
 
 if TYPE_CHECKING:
@@ -109,16 +106,11 @@ def create_entropy(random_generator: Random, length: int = 4) -> str:
         msg = "Cannot create entropy without a length >= 1."
         raise ValueError(msg)
 
-    entropy: str = ""
-
-    while len(entropy) < length:
-        entropy += base36_encode(floor(random_generator.random() * 36))
-
-    return entropy
+    return "".join([BASE36_ALPHABET[floor(random_generator.random() * BASE36_RADIX)] for _ in range(length)])
 
 
 def create_hash(data: str = "") -> str:
-    """Creates a hash value for a given string using the SHA-512 algorithm (prefers SHA3) and returns
+    """Creates a hash value for a given string using the SHA3-512 algorithm and returns
     it in base36 encoding format after dropping the first character.
 
     Parameters
@@ -130,10 +122,10 @@ def create_hash(data: str = "") -> str:
     Returns
     -------
     str
-        Base36 encoding of the SHA-512 hash of the input string `data`, with the first character dropped.
+        Base36 encoding of the SHA3-512 hash of the input string `data`, with the first character dropped.
 
     """
-    hashed_value: _Hash = sha512(data.encode())
+    hashed_value: _Hash = sha3_512(data.encode())
     hashed_int: int = int.from_bytes(hashed_value.digest(), byteorder="big")
 
     # Drop the first character because it will bias the histogram to the left.
@@ -153,8 +145,7 @@ def create_letter(random_generator: Random) -> str:
     str
         a randomly generated lowercase letter from the English alphabet.
     """
-    alphabet: str = string.ascii_lowercase
-    return alphabet[floor(random_generator.random() * len(alphabet))]
+    return ASCII_LOWERCASE[floor(random_generator.random() * ASCII_LOWERCASE_LEN)]
 
 
 def base36_encode(number: int) -> str:
@@ -181,12 +172,13 @@ def base36_encode(number: int) -> str:
         msg = "Cannot encode negative integers."
         raise ValueError(msg)
 
-    encoded_string: str = ""
-    alphabet: str = string.digits + string.ascii_lowercase
-    alphabet_length: int = len(alphabet)
+    if number == 0:
+        return "0"
 
+    encoded_chars: list[str] = []
     while number != 0:
-        number, mod = divmod(number, alphabet_length)
-        encoded_string = alphabet[mod] + encoded_string
+        number, mod = divmod(number, BASE36_RADIX)
+        encoded_chars.append(BASE36_ALPHABET[mod])
 
-    return encoded_string or "0"
+    encoded_chars.reverse()
+    return "".join(encoded_chars)

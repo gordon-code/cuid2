@@ -115,6 +115,15 @@ class TestCreateHash:
         with pytest.raises(AttributeError):
             utils.create_hash(12345)  # type: ignore[arg-type]
 
+    #  Tests that create_hash() uses sha3_512 directly without a sha512 fallback attribute
+    def test_create_hash_uses_sha3_512_directly(self: "TestCreateHash", mocker: "Mock") -> None:
+        assert not hasattr(utils, "sha512")
+        mock_hash = mocker.Mock()
+        mock_hash.digest.return_value = b"\x08" + b"\x00" * 63
+        mock_sha3 = mocker.patch("cuid2.utils.sha3_512", return_value=mock_hash)
+        assert len(utils.create_hash("test")) == 98
+        mock_sha3.assert_called_once_with(b"test")
+
 
 class TestCreateEntropy:
     #  Tests that create_entropy returns a string of expected length and only contains characters
@@ -198,6 +207,14 @@ class TestCreateEntropy:
         result = utils.create_entropy(mock_random, length=10)
         assert len(result) == 10
         assert all(c in string.digits + string.ascii_lowercase for c in result)
+
+    #  Tests that create_entropy indexes BASE36_ALPHABET directly without calling base36_encode
+    def test_create_entropy_does_not_call_base36_encode(self: "TestCreateEntropy", mocker: "Mock") -> None:
+        spy = mocker.spy(utils, "base36_encode")
+        mock_random = mocker.Mock()
+        mock_random.random.return_value = 0.5
+        assert utils.create_entropy(mock_random, length=4) == "iiii"
+        assert spy.call_count == 0
 
 
 class TestCreateFingerprint:

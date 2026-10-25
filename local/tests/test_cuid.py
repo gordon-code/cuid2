@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import warnings
 from math import floor
 from secrets import SystemRandom
@@ -8,6 +9,8 @@ from typing import TYPE_CHECKING, Callable
 
 import pytest
 
+import cuid2.cli
+import cuid2.generator
 from cuid2 import BIG_LENGTH, DEFAULT_LENGTH, INITIAL_COUNT_MAX, MAXIMUM_LENGTH, MIN_LENGTH, Cuid, cuid_wrapper
 from cuid2.cli import main as cli_main
 
@@ -579,3 +582,22 @@ class TestCli:
         """Tests that the CLI exits when given a non-integer argument."""
         with pytest.raises(SystemExit):
             cli_main(["invalid"])
+
+    def test_cli_does_not_initialize_generator_on_import(
+        self: "TestCli",
+        mocker: "Mock",
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Tests that importing cuid2.cli does not initialize a CUID generator until main() is called."""
+        try:
+            spy = mocker.spy(cuid2.generator, "cuid_wrapper")
+            importlib.reload(cuid2.cli)
+            assert spy.call_count == 0
+            assert not hasattr(cuid2.cli, "generate_cuid")
+            cuid2.cli.main([])
+            assert spy.call_count == 1
+            output = capsys.readouterr().out.strip()
+            assert len(output) == DEFAULT_LENGTH
+        finally:
+            mocker.stopall()
+            importlib.reload(cuid2.cli)
