@@ -213,7 +213,11 @@ is_cuid = Cuid.is_cuid
 
 
 def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
-    """Wrap a single Cuid class instance and return a callable that generates a CUID string.
+    """Wrap `create_id` and return a zero-argument callable that generates a CUID string.
+
+    .. deprecated:: 2.1.0
+        `cuid_wrapper` is deprecated and will be removed in v3.0.0.
+        Use `create_id` or `functools.partial(create_id, length=...)` instead.
 
     Parameters
     ----------
@@ -236,11 +240,18 @@ def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
     Warns
     -----
     DeprecationWarning
-        If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
+        Always emitted because `cuid_wrapper` is deprecated and will be removed in v3.0.0,
+        and also emitted if the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
     """
-    cuid_generator: Cuid = Cuid(length=length)
+    _validate_length(length)
+    warnings.warn(
+        "cuid_wrapper() is deprecated and will be removed in v3.0.0. "
+        "Use create_id() or functools.partial(create_id, length=...) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
     def cuid() -> str:
-        return cuid_generator.generate()
+        return create_id(length=length)
 
     return cuid
