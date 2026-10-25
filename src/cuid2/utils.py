@@ -106,7 +106,7 @@ def create_entropy(random_generator: Random, length: int = 4) -> str:
         msg = "Cannot create entropy without a length >= 1."
         raise ValueError(msg)
 
-    return "".join(BASE36_ALPHABET[floor(random_generator.random() * BASE36_RADIX)] for _ in range(length))
+    return "".join([BASE36_ALPHABET[floor(random_generator.random() * BASE36_RADIX)] for _ in range(length)])
 
 
 def create_hash(data: str = "") -> str:
@@ -180,4 +180,5 @@ def base36_encode(number: int) -> str:
         number, mod = divmod(number, BASE36_RADIX)
         encoded_chars.append(BASE36_ALPHABET[mod])
 
-    return "".join(reversed(encoded_chars))
+    encoded_chars.reverse()
+    return "".join(encoded_chars)
