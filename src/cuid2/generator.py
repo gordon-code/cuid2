@@ -146,14 +146,14 @@ class Cuid:  # pylint: disable=too-few-public-methods
         return first_letter + utils.create_hash(hash_input)[1:resolved_length]
 
     @staticmethod
-    def is_cuid(cuid_str: str, min_length: int = 2, max_length: int = MAXIMUM_LENGTH) -> bool:
+    def is_cuid(cuid_str: str, min_length: int = MIN_LENGTH, max_length: int = MAXIMUM_LENGTH) -> bool:
         """Validates whether a given string is a valid CUID2 identifier.
 
         Parameters
         ----------
         cuid_str : str
             The string to validate as a CUID2 identifier.
-        min_length : int, default=2
+        min_length : int, default=MIN_LENGTH (2)
             The minimum allowed length of the identifier. Values below 2 have no effect, since a valid
             identifier always has a leading letter followed by at least one more character.
         max_length : int, default=MAXIMUM_LENGTH (98)
@@ -173,6 +173,43 @@ class Cuid:  # pylint: disable=too-few-public-methods
             and min_length <= len(cuid_str) <= max_length
             and bool(_CUID_REGEX.match(cuid_str))
         )
+
+
+_DEFAULT_GENERATOR: Optional[Cuid] = None
+
+
+def create_id(length: Optional[int] = None) -> str:
+    """Generate a CUID2 string using the module-level lazy default generator.
+
+    Parameters
+    ----------
+    length : int, optional
+        The optional length of the generated CUID2 string. Defaults to `DEFAULT_LENGTH` (24) when omitted.
+        A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
+        Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a DeprecationWarning.
+
+    Returns
+    -------
+    str
+        A collision-resistant, base36-encoded CUID2 identifier starting with a lowercase ASCII letter.
+
+    Raises
+    ------
+    ValueError
+        If the length parameter is a boolean, less than 1, or greater than `MAXIMUM_LENGTH` (98 characters).
+
+    Warns
+    -----
+    DeprecationWarning
+        If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
+    """
+    global _DEFAULT_GENERATOR  # noqa: PLW0603  # pylint: disable=global-statement
+    if _DEFAULT_GENERATOR is None:
+        _DEFAULT_GENERATOR = Cuid()
+    return _DEFAULT_GENERATOR.generate(length=length)
+
+
+is_cuid = Cuid.is_cuid
 
 
 def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:

@@ -11,7 +11,17 @@ import pytest
 
 import cuid2.cli
 import cuid2.generator
-from cuid2 import BIG_LENGTH, DEFAULT_LENGTH, INITIAL_COUNT_MAX, MAXIMUM_LENGTH, MIN_LENGTH, Cuid, cuid_wrapper
+from cuid2 import (
+    BIG_LENGTH,
+    DEFAULT_LENGTH,
+    INITIAL_COUNT_MAX,
+    MAXIMUM_LENGTH,
+    MIN_LENGTH,
+    Cuid,
+    create_id,
+    cuid_wrapper,
+    is_cuid,
+)
 from cuid2.cli import main as cli_main
 
 if TYPE_CHECKING:
@@ -475,6 +485,63 @@ class TestIsCuid:
         assert Cuid.is_cuid(generated + "\n") is False
         assert Cuid.is_cuid(generated[:-1] + "!") is False
         assert Cuid.is_cuid("") is False
+
+    #  Tests that top-level is_cuid is exported and behaves identically to Cuid.is_cuid.
+    def test_top_level_is_cuid_export(self: "TestIsCuid") -> None:
+        assert is_cuid is Cuid.is_cuid
+        generated = create_id()
+        assert is_cuid(generated) is True
+        assert is_cuid("yi7rqj1trke") is True
+        assert is_cuid("NOT-A-CUID") is False
+        assert is_cuid("") is False
+        assert is_cuid(generated, min_length=DEFAULT_LENGTH, max_length=DEFAULT_LENGTH) is True
+        assert is_cuid(generated, min_length=DEFAULT_LENGTH + 1) is False
+
+
+class TestCreateId:
+    def test_create_id_default_length(self: "TestCreateId") -> None:
+        """Tests that create_id() generates a valid 24-character CUID2 string by default."""
+        generated: str = create_id()
+        assert isinstance(generated, str)
+        assert len(generated) == DEFAULT_LENGTH
+        assert is_cuid(generated) is True
+
+    @pytest.mark.parametrize("length", [MIN_LENGTH, 16, BIG_LENGTH])
+    def test_create_id_custom_length(self: "TestCreateId", length: int) -> None:
+        """Tests that create_id() generates a valid CUID2 string of the specified length."""
+        generated: str = create_id(length=length)
+        assert len(generated) == length
+        assert is_cuid(generated) is True
+
+    def test_create_id_unique_ids(self: "TestCreateId") -> None:
+        """Tests that consecutive create_id() calls return distinct IDs."""
+        assert create_id() != create_id()
+
+    @pytest.mark.parametrize("length", [1, BIG_LENGTH + 1])
+    def test_create_id_deprecated_length(self: "TestCreateId", length: int) -> None:
+        """Tests that create_id() emits DeprecationWarning attributed to the caller for lengths outside 2..32."""
+        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
+            generated: str = create_id(length=length)
+        assert len(generated) == length
+        assert record[0].filename == __file__
+
+    @pytest.mark.parametrize(
+        ("invalid_length", "expected_match"),
+        [
+            (0, r"Length must be at least 1 character\."),
+            (-1, r"Length must be at least 1 character\."),
+            (True, r"Length must be at least 1 character\."),
+            (MAXIMUM_LENGTH + 1, r"Length must never exceed 98 characters\."),
+        ],
+    )
+    def test_create_id_invalid_length(
+        self: "TestCreateId",
+        invalid_length: int,
+        expected_match: str,
+    ) -> None:
+        """Tests that create_id() raises ValueError when length is out of bounds."""
+        with pytest.raises(ValueError, match=expected_match):
+            create_id(length=invalid_length)
 
 
 class TestCuidWrapper:
