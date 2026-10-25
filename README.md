@@ -50,7 +50,7 @@ For more information on the improvements of CUID2 over CUID, see the
 | **Starts with Letter?** | **Yes (100% `[a-z]`)** | **No** (`0` until yr 2527) | Not guaranteed (37.5% `a–f`) | **No** (always `0–7`) | Not guaranteed (81.25%) |
 | **Double-Click Copyable?** | **Yes** | No (hyphens) | No (hyphens) | **Yes** | No (`-` breaks word) |
 | **Entropy / Random Bits** | **~123.6 bits** (`165.0` at 32) | 74 bits / ms | 122 bits | 80 bits / ms | 126 bits |
-| **50% Collision Bound** | **~4.7 × 10¹⁸ IDs** | ~6.9 × 10¹⁰ IDs / ms | ~2.7 × 10¹⁸ IDs | ~1.3 × 10¹² IDs / ms | ~4.0 × 10¹⁸ IDs |
+| **50% Collision Bound** | **~4.7 × 10¹⁸** (`~7.9 × 10²⁴` at 32) | ~1.6 × 10¹¹ / ms | ~2.7 × 10¹⁸ | ~1.3 × 10¹² / ms | ~1.1 × 10¹⁹ |
 | **Hides Creation Timestamp?** | **Yes (SHA3-512)** | No (leaks 48-bit ms) | **Yes** | No (leaks 48-bit ms) | **Yes** |
 | **Fork / Snapshot Safe?** | **Yes (PID + host + CSPRNG)** | Counter can collide | OS CSPRNG only | Counter can collide | OS CSPRNG only |
 | **B-Tree Index Locality** | Low (uniform hash) | **High (time-ordered)** | Low (uniform random) | **High (time-ordered)** | Low (uniform random) |
