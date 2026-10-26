@@ -51,8 +51,8 @@ test = [
     "pytest-sugar==1.1.1",
 ]
 tox = [
-    "tox==4.64.8",
-    "tox-uv==1.36.1",
+    "tox==4.64.8; python_version >= '3.11'",
+    "tox-uv==1.36.1; python_version >= '3.11'",
 ]
 typing = [
     "mypy==2.4.0",
