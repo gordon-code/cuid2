@@ -114,3 +114,6 @@ def main():
 
 `is_cuid` (and `Cuid.is_cuid`) also accepts optional `min_length` and `max_length` arguments to tighten the allowed length.
 The bounds are clamped to 2 and 98 characters, so they can narrow but never widen what is considered valid.
+
+## Changelog
+See [CHANGELOG.md](https://github.com/gordon-code/cuid2/blob/main/CHANGELOG.md) for release history.

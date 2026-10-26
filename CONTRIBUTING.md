@@ -46,6 +46,15 @@ $ uv run tox p
 
 To catch any collision regressions, you may also run `uv run pytest local/tests --runslow` locally. The test takes approximately 40 minutes.
 
+## Changelog
+
+Pull requests that change behavior, packaging, or documentation that consumers read should add a brief, user-facing entry under `## [Unreleased]` in `CHANGELOG.md` using the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) categories (`Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`). Repository, CI, test, tooling, and dependency hygiene is folded into a single `Internal:` bullet under `### Changed` for the release rather than itemized per PR. Contributor pull requests do not bump the package version; the maintainer bumps the version in the release PR.
+
+To cut a release:
+
+1. Open a release PR that renames `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`, adds a fresh empty `## [Unreleased]` section above it, bumps `version` in `pyproject.toml` and `uv.lock`, and updates the compare-link footer in `CHANGELOG.md` (adds `[X.Y.Z]` comparing `v<prev>...vX.Y.Z` and updates `[Unreleased]` to `compare/vX.Y.Z...HEAD`).
+2. After the release PR merges to `main`, dispatch `.github/workflows/build_release.yml` from `main` with `versionNumber` set to `X.Y.Z` without a leading `v` (the workflow runs `uv version --no-sync "$VERSION_NUMBER"` and `gh release create "v$VERSION_NUMBER" --latest --generate-notes dist/*`, so passing `v2.1.1` would create tag `vv2.1.1`).
+
 ## Submitting Pull Requests
 
 Pull requests are welcomed! We'd like to review the design and implementation as early as

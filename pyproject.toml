@@ -30,6 +30,8 @@ keywords = ['crypt', 'security', 'uuid', 'guid', 'cuid', 'cryptography']
 
 [project.urls]
 repository = "https://github.com/gordon-code/cuid2/"
+Changelog = "https://github.com/gordon-code/cuid2/blob/main/CHANGELOG.md"
+Issues = "https://github.com/gordon-code/cuid2/issues"
 
 [project.scripts]
 cuid2 = "cuid2.cli:main"
