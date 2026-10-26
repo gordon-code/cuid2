@@ -95,8 +95,6 @@ def main():
     short_cuid: str = short_cuid_generator()
 ```
 
-> **Note:** `cuid_wrapper()` is deprecated as of `v2.1.0` and will be removed in `v3.0.0`. Use `create_id` directly for default 24-character IDs or `functools.partial(create_id, length=...)` for pre-configured custom lengths.
-
 Finally, for more explicit control of the CUID generator, you can instantiate the class directly:
 ```python
 from cuid2 import Cuid
@@ -114,3 +112,6 @@ def main():
 
 `is_cuid` (and `Cuid.is_cuid`) also accepts optional `min_length` and `max_length` arguments to tighten the allowed length.
 The bounds are clamped to 2 and 98 characters, so they can narrow but never widen what is considered valid.
+
+## Changelog
+See [CHANGELOG.md](https://github.com/gordon-code/cuid2/blob/main/CHANGELOG.md) for release history.
