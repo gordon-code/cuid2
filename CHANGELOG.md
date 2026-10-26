@@ -18,10 +18,6 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 - Top-level `create_id()` and `is_cuid()` functions for generating and validating CUID2 strings without instantiating `Cuid`.
 
-### Deprecated
-
-- `cuid_wrapper()` now emits `DeprecationWarning` each time it is called and is planned for removal in 3.0.0, and the returned callable now re-validates its length on every call so an out-of-spec length (`1`, `33`–`98`) warns on every call in addition to at creation (use `create_id` or `functools.partial(create_id, length=...)`).
-
 ## [2.0.4] - 2026-10-25
 
 ### Changed
