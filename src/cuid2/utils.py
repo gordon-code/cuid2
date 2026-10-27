@@ -5,7 +5,7 @@ import socket
 import string
 from hashlib import sha3_512
 from math import floor
-from typing import TYPE_CHECKING, Callable, Final, Optional
+from typing import TYPE_CHECKING, Final
 
 # ~22k hosts before 50% chance of initial counter collision
 # with a remaining counter range of 9.0e+15 in JavaScript.
@@ -23,7 +23,7 @@ BASE36_RADIX: Final[int] = len(BASE36_ALPHABET)
 
 if TYPE_CHECKING:
     from _random import Random
-    from hashlib import _Hash
+    from collections.abc import Callable
 
 
 def create_counter(count: int) -> Callable[[], int]:
@@ -50,7 +50,7 @@ def create_counter(count: int) -> Callable[[], int]:
     return counter
 
 
-def create_fingerprint(random_generator: Random, fingerprint_data: Optional[str] = "") -> str:
+def create_fingerprint(random_generator: Random, fingerprint_data: str | None = "") -> str:
     """Creates a fingerprint, by default combining process ID, hostname, and environment variables
     with entropy and then hashing the result.
 
@@ -74,7 +74,7 @@ def create_fingerprint(random_generator: Random, fingerprint_data: Optional[str]
         hostname: str = socket.gethostname()
         env_variables: str = "".join(os.environ.keys())
 
-        fingerprint_data: str = str(process_id) + hostname + env_variables  # type: ignore[no-redef]
+        fingerprint_data = str(process_id) + hostname + env_variables
 
     fingerprint: str = str(fingerprint_data) + create_entropy(random_generator, BIG_LENGTH)
     return create_hash(fingerprint)[0:BIG_LENGTH]
@@ -125,7 +125,7 @@ def create_hash(data: str = "") -> str:
         Base36 encoding of the SHA3-512 hash of the input string `data`, with the first character dropped.
 
     """
-    hashed_value: _Hash = sha3_512(data.encode())
+    hashed_value = sha3_512(data.encode())
     hashed_int: int = int.from_bytes(hashed_value.digest(), byteorder="big")
 
     # Drop the first character because it will bias the histogram to the left.

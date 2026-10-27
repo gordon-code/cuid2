@@ -4,16 +4,17 @@ about: Use this template for raising a feature request
 labels: 'type:feature'
 ---
 
-**System information**
+## System information
+
 - OS version:
 - cuid2 version:
 - Python version:
 - Are you willing to contribute it (Yes/No):
 
-**Describe the feature and the current behavior/state.**
+## Describe the feature and the current behavior/state
 
-**Will this change the current api? How?**
+## Will this change the current API? How?
 
-**Who will benefit with this feature?**
+## Who will benefit from this feature?
 
-**Any Other info.**
+## Any other info

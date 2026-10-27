@@ -1,0 +1,103 @@
+default_stages = ["pre-commit"]
+default_install_hook_types = ["pre-commit", "pre-push"]
+
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "trailing-whitespace", args = ["--markdown-linebreak-ext=md"], priority = 0 },
+  { id = "end-of-file-fixer", priority = 0 },
+  { id = "check-toml", priority = 0 },
+  { id = "check-yaml", args = ["--multi"], priority = 0 },
+  { id = "check-json", priority = 0 },
+  { id = "check-case-conflict", priority = 0 },
+  { id = "check-merge-conflict", stages = ["pre-commit", "pre-push"], priority = 0 },
+  { id = "mixed-line-ending", args = ["--fix=lf"], priority = 0 },
+  { id = "detect-private-key", priority = 0 },
+  { id = "check-added-large-files", args = ["--maxkb=500"], priority = 0 },
+  { id = "no-commit-to-branch", name = "Block commits to main", args = ["--branch", "main"], stages = ["pre-commit", "pre-push"], priority = 0 },
+]
+
+[[repos]]
+repo = "local"
+hooks = [
+  {
+    id = "ruff-check",
+    name = "ruff check",
+    entry = "uv run ruff check",
+    language = "system",
+    types = ["python"],
+    pass_filenames = false,
+    priority = 0,
+  },
+  {
+    id = "ruff-format",
+    name = "ruff format --check",
+    entry = "uv run ruff format --check",
+    language = "system",
+    types = ["python"],
+    pass_filenames = false,
+    priority = 0,
+  },
+  {
+    id = "codespell",
+    name = "codespell",
+    entry = "uv run codespell",
+    language = "system",
+    pass_filenames = false,
+    priority = 0,
+  },
+  {
+    id = "rumdl-check",
+    name = "rumdl check",
+    entry = "uv run rumdl check",
+    language = "system",
+    types = ["markdown"],
+    pass_filenames = false,
+    priority = 0,
+  },
+  {
+    id = "rumdl-fmt",
+    name = "rumdl fmt --check",
+    entry = "uv run rumdl fmt --check",
+    language = "system",
+    types = ["markdown"],
+    pass_filenames = false,
+    priority = 0,
+  },
+  {
+    id = "mypy",
+    name = "mypy",
+    entry = "uv run mypy",
+    language = "system",
+    types = ["python"],
+    pass_filenames = false,
+    priority = 0,
+  },
+  {
+    id = "pyright",
+    name = "pyright",
+    entry = "env PYRIGHT_PYTHON_IGNORE_WARNINGS=1 uv run pyright",
+    language = "system",
+    types = ["python"],
+    pass_filenames = false,
+    priority = 0,
+  },
+  {
+    id = "pyright-verifytypes",
+    name = "pyright --verifytypes",
+    entry = "env PYRIGHT_PYTHON_IGNORE_WARNINGS=1 uv run pyright --verifytypes cuid2 --ignoreexternal",
+    language = "system",
+    types = ["python"],
+    pass_filenames = false,
+    priority = 0,
+  },
+  {
+    id = "pytest",
+    name = "pytest",
+    entry = "uv run pytest",
+    language = "system",
+    types = ["python"],
+    pass_filenames = false,
+    priority = 0,
+  },
+]

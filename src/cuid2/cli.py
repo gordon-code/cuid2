@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
-from cuid2.generator import DEFAULT_LENGTH, create_id
+from cuid2.generator import create_id
+from cuid2.utils import DEFAULT_LENGTH
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
-def main(args: Optional[Sequence[str]] = None) -> None:
+def main(args: Sequence[str] | None = None) -> None:
     """Print out a CUID generated string. Used by the CLI console script."""
     arguments_parser = ArgumentParser()
     arguments_parser.add_argument(

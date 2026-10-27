@@ -4,13 +4,13 @@
 [![PyPi](https://img.shields.io/pypi/v/cuid2.svg)](https://pypi.org/project/cuid2/)
 [![PyPi](https://img.shields.io/pypi/dm/cuid2.svg)](https://pypi.org/project/cuid2/)
 
-CUID2 for Python 3. Next generation GUIDs. Collision-resistant ids optimized for 
+CUID2 for Python 3. Next generation GUIDs. Collision-resistant ids optimized for
 horizontal scaling and performance.
 
-A port of the [CUID2 reference implementation](https://github.com/paralleldrive/cuid2) 
+A port of the [CUID2 reference implementation](https://github.com/paralleldrive/cuid2)
 by [Parallel Drive](https://github.com/paralleldrive) to Python 3.
 
-> :memo: Note: Originally taken from https://github.com/overflowdigital before it 
+> :memo: Note: Originally taken from <https://github.com/overflowdigital> before it
 > was unpublished. Thank you to @joshuathompsonlindley for your original contribution!
 
 ## What is CUID2?
@@ -23,14 +23,13 @@ by [Parallel Drive](https://github.com/paralleldrive) to Python 3.
 
 ## Why?
 
-For more information on the theory and usage of CUID2, see the 
+For more information on the theory and usage of CUID2, see the
 [following](https://github.com/paralleldrive/cuid2#why).
 
 ## Improvements Over CUID
 
-For more information on the improvements of CUID2 over CUID, see the 
+For more information on the improvements of CUID2 over CUID, see the
 [following](https://github.com/paralleldrive/cuid2#improvements-over-cuid).
-
 
 ## When to Use CUID2
 
@@ -58,13 +57,15 @@ For more information on the improvements of CUID2 over CUID, see the
 > **When to choose UUIDv7 instead:** Because CUID2 hashes its inputs via SHA3-512, IDs are uniformly distributed across the key space. For write-heavy relational tables where B-tree insert locality and 16-byte binary `UUID` storage matter more than hiding creation timestamps, prefer Python 3.14's `uuid.uuid7()` or PostgreSQL 18's `uuidv7()`.
 
 ## Install
-```
+
+```bash
 pip install cuid2
 ```
 
 ## Usage
 
 For most use cases—including Django, SQLAlchemy, and Pydantic model defaults—use the top-level `create_id` and `is_cuid` functions directly:
+
 ```python
 from cuid2 import create_id, is_cuid
 
@@ -77,12 +78,14 @@ print(is_cuid(my_cuid))  # True
 > **Tip for Django & ORM defaults:** Pass `default=create_id` directly on model fields (e.g., `models.CharField(max_length=24, default=create_id)`). Because `create_id` is a top-level function backed by a lazy singleton generator, Django `makemigrations` can serialize it directly and `Cuid()` initialization is deferred until the first ID is generated in each worker process.
 
 You can also generate CUIDs directly in the terminal (optionally specifying a custom length):
+
 ```bash
-$ cuid2
-$ cuid2 10
+cuid2
+cuid2 10
 ```
 
 If a framework, dataclass, or Django migration requires a zero-argument callable with a custom length, use `functools.partial` with `create_id`:
+
 ```python
 from functools import partial
 from typing import Callable
@@ -96,6 +99,7 @@ def main():
 ```
 
 Finally, for more explicit control of the CUID generator, you can instantiate the class directly:
+
 ```python
 from cuid2 import Cuid
 
@@ -114,4 +118,5 @@ def main():
 The bounds are clamped to 2 and 98 characters, so they can narrow but never widen what is considered valid.
 
 ## Changelog
+
 See [CHANGELOG.md](https://github.com/gordon-code/cuid2/blob/main/CHANGELOG.md) for release history.
