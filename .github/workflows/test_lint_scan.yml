@@ -32,9 +32,11 @@ jobs:
           version: "0.13.5"
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: uv sync --locked --no-default-groups --group test
+        run: uv sync --locked --no-default-groups --group test --no-editable
       - name: Run Testing
-        run: uv run --no-sync -v pytest
+        run: |
+          uv run --no-sync cuid2
+          uv run --no-sync -v pytest
 
   lint:
     name: Linting
@@ -67,6 +69,57 @@ jobs:
           uv run --no-sync mypy
           uv run --no-sync pyright
           uv run --no-sync pyright --verifytypes cuid2 --ignoreexternal
+      - name: Verify version and CHANGELOG.md release notes
+        run: |
+          VERSION="$(uv version --short)"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version in pyproject.toml: $VERSION" >&2
+            exit 1
+          fi
+          VERSION="$VERSION" NOTES_OUT="$RUNNER_TEMP/release-notes.md" uv run --no-sync python - <<'PY'
+          import os
+          import pathlib
+          import re
+          import sys
+
+          version = os.environ["VERSION"]
+          notes_out = pathlib.Path(os.environ["NOTES_OUT"])
+          lines = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8").splitlines()
+          header_re = re.compile(rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$")
+          next_section_re = re.compile(r"^## ")
+          footer_link_re = re.compile(r"^\[[^\]]+\]:\s*https?://")
+
+          h2_headers = [line for line in lines if next_section_re.match(line)]
+          if len(h2_headers) < 2 or h2_headers[0] != "## [Unreleased]" or not header_re.match(h2_headers[1]):
+              sys.stderr.write(
+                  f"Expected '## [Unreleased]' followed by '## [{version}] - YYYY-MM-DD' in CHANGELOG.md\n"
+              )
+              sys.exit(1)
+
+          unreleased_link = f"[Unreleased]: https://github.com/gordon-code/cuid2/compare/v{version}...HEAD"
+          version_link_prefix = f"[{version}]: https://github.com/gordon-code/cuid2/"
+          if unreleased_link not in lines or not any(line.startswith(version_link_prefix) for line in lines):
+              sys.stderr.write(f"Missing or stale compare links for {version} in CHANGELOG.md footer\n")
+              sys.exit(1)
+
+          collecting = False
+          collected: list[str] = []
+          for line in lines:
+              if not collecting:
+                  if header_re.match(line):
+                      collecting = True
+                  continue
+              if next_section_re.match(line) or footer_link_re.match(line):
+                  break
+              collected.append(line)
+
+          body = "\n".join(collected).strip()
+          if not collecting or not body:
+              sys.stderr.write(f"Missing or empty CHANGELOG.md section for version {version}\n")
+              sys.exit(1)
+          notes_out.write_text(body + "\n", encoding="utf-8")
+          PY
+          rm -f "$RUNNER_TEMP/release-notes.md"
       - name: Build and Verify sdist and wheel
         run: |
           uv build --no-preview --no-sources --clear
@@ -120,6 +173,7 @@ jobs:
           WHEEL_TEST_DIR="$RUNNER_TEMP/wheel-test"
           rm -rf "$WHEEL_TEST_DIR"
           mkdir -p "$WHEEL_TEST_DIR"
+          uv build --no-preview --no-sources --wheel dist/*.tar.gz --out-dir "$WHEEL_TEST_DIR/from-sdist"
           UV_PROJECT_ENVIRONMENT="$WHEEL_TEST_DIR/venv" uv sync --locked --no-default-groups --group test --no-install-project
           uv pip install --python "$WHEEL_TEST_DIR/venv/bin/python" --no-deps dist/*.whl
           "$WHEEL_TEST_DIR/venv/bin/python" -I -c "import pathlib, cuid2; assert 'site-packages' in pathlib.Path(cuid2.__file__).parts, cuid2.__file__"

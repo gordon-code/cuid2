@@ -56,9 +56,22 @@ jobs:
           version = os.environ["VERSION"]
           notes_out = pathlib.Path(os.environ["NOTES_OUT"])
           lines = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8").splitlines()
-          header_re = re.compile(rf"^## \[{re.escape(version)}\](?:\s+-.*)?$")
-          next_section_re = re.compile(r"^## \[")
+          header_re = re.compile(rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$")
+          next_section_re = re.compile(r"^## ")
           footer_link_re = re.compile(r"^\[[^\]]+\]:\s*https?://")
+
+          h2_headers = [line for line in lines if next_section_re.match(line)]
+          if len(h2_headers) < 2 or h2_headers[0] != "## [Unreleased]" or not header_re.match(h2_headers[1]):
+              sys.stderr.write(
+                  f"Expected '## [Unreleased]' followed by '## [{version}] - YYYY-MM-DD' in CHANGELOG.md\n"
+              )
+              sys.exit(1)
+
+          unreleased_link = f"[Unreleased]: https://github.com/gordon-code/cuid2/compare/v{version}...HEAD"
+          version_link_prefix = f"[{version}]: https://github.com/gordon-code/cuid2/"
+          if unreleased_link not in lines or not any(line.startswith(version_link_prefix) for line in lines):
+              sys.stderr.write(f"Missing or stale compare links for {version} in CHANGELOG.md footer\n")
+              sys.exit(1)
 
           collecting = False
           collected: list[str] = []
@@ -132,6 +145,7 @@ jobs:
           WHEEL_TEST_DIR="$RUNNER_TEMP/wheel-test"
           rm -rf "$WHEEL_TEST_DIR"
           mkdir -p "$WHEEL_TEST_DIR"
+          uv build --no-preview --no-sources --wheel dist/*.tar.gz --out-dir "$WHEEL_TEST_DIR/from-sdist"
           UV_PROJECT_ENVIRONMENT="$WHEEL_TEST_DIR/venv" uv sync --locked --no-default-groups --group test --no-install-project
           uv pip install --python "$WHEEL_TEST_DIR/venv/bin/python" --no-deps dist/*.whl
           "$WHEEL_TEST_DIR/venv/bin/python" -I -c "import pathlib, cuid2; assert 'site-packages' in pathlib.Path(cuid2.__file__).parts, cuid2.__file__"
