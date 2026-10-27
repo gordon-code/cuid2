@@ -1,3 +1,5 @@
+"""Core CUID2 generator class, validation, and module-level helper functions."""
+
 from __future__ import annotations
 
 import inspect
@@ -28,15 +30,23 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     class FingerprintCallable(Protocol):
-        def __call__(self: FingerprintCallable, random_generator: Random) -> str: ...
+        """Protocol for fingerprint generator callables."""
+
+        def __call__(self: FingerprintCallable, random_generator: Random) -> str:
+            """Generate a host/process fingerprint using the provided random generator."""
+            ...
 
     class IsCuidCallable(Protocol):
+        """Protocol for the CUID2 validation callable."""
+
         def __call__(
             self: IsCuidCallable,
             cuid_str: str,
             min_length: int = MIN_LENGTH,
             max_length: int = MAXIMUM_LENGTH,
-        ) -> bool: ...
+        ) -> bool:
+            """Validate whether a string is a CUID2 identifier within the given length bounds."""
+            ...
 
 
 _CUID_REGEX: Final[re.Pattern[str]] = re.compile(r"^[a-z][0-9a-z]+\Z")
@@ -81,7 +91,7 @@ def _validate_length(length: int) -> None:
 
 
 def is_cuid(cuid_str: str, min_length: int = MIN_LENGTH, max_length: int = MAXIMUM_LENGTH) -> bool:
-    """Validates whether a given string is a valid CUID2 identifier.
+    """Validate whether a given string is a valid CUID2 identifier.
 
     Parameters
     ----------
@@ -110,6 +120,8 @@ def is_cuid(cuid_str: str, min_length: int = MIN_LENGTH, max_length: int = MAXIM
 
 
 class Cuid:
+    """Configurable CUID2 generator instance."""
+
     def __init__(
         self: Cuid,
         random_generator: Callable[[], Random] = SystemRandom,
@@ -117,8 +129,7 @@ class Cuid:
         length: int = DEFAULT_LENGTH,
         fingerprint: FingerprintCallable = utils.create_fingerprint,
     ) -> None:
-        """Initialization function for the Cuid class that generates a universally unique,
-        base36 encoded string.
+        """Initialize a Cuid generator that produces universally unique, base36-encoded strings.
 
         Parameters
         ----------
@@ -154,7 +165,7 @@ class Cuid:
         self._fingerprint: str = fingerprint(random_generator=self._random)
 
     def generate(self: Cuid, length: int | None = None) -> str:
-        """Generates a universally unique, base36 encoded string with a specified length.
+        """Generate a universally unique, base36-encoded string with a specified length.
 
         Parameters
         ----------

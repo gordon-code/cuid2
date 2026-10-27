@@ -87,14 +87,15 @@ cuid2 10
 If a framework, dataclass, or Django migration requires a zero-argument callable with a custom length, use `functools.partial` with `create_id`:
 
 ```python
+from collections.abc import Callable
 from functools import partial
-from typing import Callable
+
 from cuid2 import create_id
 
 short_cuid_generator: Callable[[], str] = partial(create_id, length=10)
 
 
-def main():
+def main() -> None:
     short_cuid: str = short_cuid_generator()
 ```
 
@@ -106,7 +107,7 @@ from cuid2 import Cuid
 CUID_GENERATOR: Cuid = Cuid(length=10)
 
 
-def main():
+def main() -> None:
     my_cuid: str = CUID_GENERATOR.generate()
     next_cuid: str = CUID_GENERATOR.generate()
 
