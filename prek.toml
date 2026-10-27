@@ -23,7 +23,7 @@ hooks = [
   {
     id = "ruff-check",
     name = "ruff check",
-    entry = "uv run ruff check src/ local/tests/",
+    entry = "uv run ruff check",
     language = "system",
     types = ["python"],
     pass_filenames = false,
@@ -32,7 +32,7 @@ hooks = [
   {
     id = "ruff-format",
     name = "ruff format --check",
-    entry = "uv run ruff format --check src/ local/tests/",
+    entry = "uv run ruff format --check",
     language = "system",
     types = ["python"],
     pass_filenames = false,
@@ -67,7 +67,7 @@ hooks = [
   {
     id = "mypy",
     name = "mypy",
-    entry = "uv run mypy src/ local/tests/",
+    entry = "uv run mypy",
     language = "system",
     types = ["python"],
     pass_filenames = false,
@@ -76,7 +76,7 @@ hooks = [
   {
     id = "pyright",
     name = "pyright",
-    entry = "env PYRIGHT_PYTHON_IGNORE_WARNINGS=1 uv run pyright src/ local/tests/",
+    entry = "env PYRIGHT_PYTHON_IGNORE_WARNINGS=1 uv run pyright",
     language = "system",
     types = ["python"],
     pass_filenames = false,
@@ -94,7 +94,7 @@ hooks = [
   {
     id = "pytest",
     name = "pytest",
-    entry = "uv run pytest local/tests",
+    entry = "uv run pytest",
     language = "system",
     types = ["python"],
     pass_filenames = false,

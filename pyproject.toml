@@ -71,7 +71,7 @@ legacy_tox_ini = """
     runner = uv-venv-lock-runner
     description = run unit tests
     dependency_groups = test
-    commands = pytest local/tests
+    commands = pytest
 
     [testenv:check]
     runner = uv-venv-lock-runner
@@ -84,13 +84,13 @@ legacy_tox_ini = """
         typing
         test
     commands =
-        ruff check src/ local/tests/
-        ruff format --check src/ local/tests/
+        ruff check
+        ruff format --check
         codespell
         rumdl check
         rumdl fmt --check
-        mypy src/ local/tests/
-        pyright src/ local/tests/
+        mypy
+        pyright
         pyright --verifytypes cuid2 --ignoreexternal
 """
 
@@ -100,6 +100,7 @@ skip = "build,dist,hack,uv.lock"
 [tool.rumdl]
 cache-dir = "local/.rumdl_cache"
 disable = ["MD013"]
+exclude = ["hack"]
 
 [tool.rumdl.per-file-ignores]
 ".github/**/*.md" = ["MD041"]
@@ -109,6 +110,7 @@ line-length = 120
 src = ["src"]
 target-version = "py310"
 cache-dir = "local/.ruff_cache"
+extend-exclude = ["hack"]
 force-exclude = true
 
 [tool.ruff.lint]
@@ -147,8 +149,10 @@ testpaths = ["local/tests"]
 
 [tool.mypy]
 cache_dir = "local/.mypy_cache"
+files = ["."]
+exclude = ["^build/", "^dist/", "^hack/"]
 strict = true
 
 [tool.pyright]
-include = ["src", "local/tests"]
+exclude = ["build", "dist", "hack"]
 strict = ["src"]

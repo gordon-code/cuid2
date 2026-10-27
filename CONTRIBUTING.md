@@ -38,7 +38,7 @@ git checkout -b my-new-feature
 
 We rely on a number of formatters, linters, and tests to ensure that
 the codebase is consistent and free from regressions. Running with
-`uv run ruff check --fix src/ local/tests/ && uv run ruff format src/ local/tests/ && uv run rumdl fmt`
+`uv run ruff check --fix && uv run ruff format && uv run rumdl fmt`
 enables quick updates to files during development. You can also install and run the parallel pre-commit hooks via [`prek`](https://github.com/j178/prek) (`prek install && prek run --all-files`).
 
 Prior to committing, run the full test and static-analysis suite (`pytest` across Python 3.10–3.14, plus `ruff`, `codespell`, `rumdl`, `mypy --strict`, `pyright`, and `pyright --verifytypes` against the built wheel in `[testenv:check]`):
@@ -47,7 +47,7 @@ Prior to committing, run the full test and static-analysis suite (`pytest` acros
 uv run tox p
 ```
 
-To catch any collision regressions, you may also run `uv run pytest local/tests --runslow` locally. The test takes approximately 40 minutes.
+To catch any collision regressions, you may also run `uv run pytest --runslow` locally. The test takes approximately 40 minutes.
 
 ## Changelog
 
