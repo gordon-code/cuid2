@@ -1,5 +1,5 @@
 [build-system]
-requires = ["uv_build>=0.7.0,<0.14.0"]
+requires = ["uv_build==0.13.5"]
 build-backend = "uv_build"
 
 [project]
@@ -42,8 +42,8 @@ default-groups = ["lint", "test", "tox", "typing"]
 [dependency-groups]
 lint = [
     "codespell==2.4.3",
-    "pylint==4.1.3",
     "ruff==0.17.0",
+    "rumdl==0.3.0",
 ]
 test = [
     "pytest==9.1.1",
@@ -86,12 +86,23 @@ legacy_tox_ini = """
     commands =
         ruff check src/ local/tests/
         ruff format --check src/ local/tests/
-        codespell src/ local/tests/ CHANGELOG.md README.md CONTRIBUTING.md
-        pylint src/ local/tests/
+        codespell
+        rumdl check
+        rumdl fmt --check
         mypy src/ local/tests/
         pyright src/ local/tests/
         pyright --verifytypes cuid2 --ignoreexternal
 """
+
+[tool.codespell]
+skip = "build,dist,hack,uv.lock"
+
+[tool.rumdl]
+cache-dir = "local/.rumdl_cache"
+disable = ["MD013"]
+
+[tool.rumdl.per-file-ignores]
+".github/**/*.md" = ["MD041"]
 
 [tool.ruff]
 line-length = 120
@@ -133,21 +144,6 @@ minversion = "8.1"
 cache_dir = "local/.pytest_cache"
 python_files = "test_*.py"
 testpaths = ["local/tests"]
-
-[tool.pylint.master]
-ignore-patterns = "test_.*.py"
-
-[tool.pylint.messages_control]
-disable = [
-    "duplicate-code",
-    "line-too-long",
-    "missing-class-docstring",
-    "missing-module-docstring",
-]
-
-[tool.pylint.design]
-max-parents = 13
-max-args = 10
 
 [tool.mypy]
 cache_dir = "local/.mypy_cache"

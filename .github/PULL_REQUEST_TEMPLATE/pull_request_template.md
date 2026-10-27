@@ -1,10 +1,10 @@
-# Description
+## Description
 
-Please include a summary of the changes and the related issue. Please 
-also include relevant motivation and context. List any dependencies 
+Please include a summary of the changes and the related issue. Please
+also include relevant motivation and context. List any dependencies
 that are required for this change.
 
-Fixes issue (if applicable): 
+Fixes issue (if applicable):
 
 ## Type of change
 
@@ -15,17 +15,18 @@ Please delete options that are not relevant.
 - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
 - [ ] This change requires a documentation update
 
-# How Has This Been Tested?
+## How Has This Been Tested?
 
-Please describe the tests that you ran to verify your changes. Provide instructions 
+Please describe the tests that you ran to verify your changes. Provide instructions
 so we can reproduce.
 
 **Test Configuration**:
+
 - OS version:
 - cuid2 version:
 - Python version:
 
-# Checklist:
+## Checklist
 
 - [ ] My code follows the style guidelines of this project
 - [ ] I have performed a self-review of my code
@@ -35,4 +36,3 @@ so we can reproduce.
 - [ ] I have added tests that prove my fix is effective or that my feature works
 - [ ] New and existing unit tests pass locally with my changes
 - [ ] Any dependent changes have been merged and published in downstream modules
-

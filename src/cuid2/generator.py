@@ -27,10 +27,10 @@ if TYPE_CHECKING:
     from _random import Random
     from collections.abc import Callable
 
-    class FingerprintCallable(Protocol):  # pylint: disable=too-few-public-methods
+    class FingerprintCallable(Protocol):
         def __call__(self: FingerprintCallable, random_generator: Random) -> str: ...
 
-    class IsCuidCallable(Protocol):  # pylint: disable=too-few-public-methods
+    class IsCuidCallable(Protocol):
         def __call__(
             self: IsCuidCallable,
             cuid_str: str,
@@ -109,7 +109,7 @@ def is_cuid(cuid_str: str, min_length: int = MIN_LENGTH, max_length: int = MAXIM
     )
 
 
-class Cuid:  # pylint: disable=too-few-public-methods
+class Cuid:
     def __init__(
         self: Cuid,
         random_generator: Callable[[], Random] = SystemRandom,
@@ -198,7 +198,7 @@ class Cuid:  # pylint: disable=too-few-public-methods
     is_cuid: ClassVar[IsCuidCallable] = staticmethod(is_cuid)
 
 
-_default_generator: Cuid | None = None  # pylint: disable=invalid-name
+_default_generator: Cuid | None = None
 
 
 def create_id(length: int | None = None) -> str:
@@ -226,7 +226,7 @@ def create_id(length: int | None = None) -> str:
     DeprecationWarning
         If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
     """
-    global _default_generator  # noqa: PLW0603  # pylint: disable=global-statement
+    global _default_generator  # noqa: PLW0603
     if _default_generator is None:
         _default_generator = Cuid()
     return _default_generator.generate(length=length)
