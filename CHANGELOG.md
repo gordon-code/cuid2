@@ -14,7 +14,7 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 ### Changed
 
-- Internal: strengthened `ruff`, `mypy`, and `pyright` static checking, added `rumdl` markdown linting/formatting and `prek.toml` pre-commit hooks, extended `codespell` to repository documentation, and removed redundant `pylint`.
+- Internal: strengthened `ruff`, `mypy`, and `pyright` static checking, added `rumdl` markdown linting/formatting, `zizmor` and `actionlint` workflow linting, `prek.toml` pre-commit hooks, and OpenSSF Scorecard analysis, hardened the release pipeline with PEP 740 PyPI attestations and `CHANGELOG.md` release notes, extended `codespell` to repository documentation, and removed `pylint` and `tox`.
 
 ## [2.1.0] - 2026-10-25
 

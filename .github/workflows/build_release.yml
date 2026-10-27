@@ -1,38 +1,213 @@
 name: Manually Build Release
 on:
-  workflow_dispatch:
-    inputs:
-      versionNumber:
-        description: "Version number of this release"
-        required: true
-        type: string
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   test-lint-scan:
-    uses: ./.github/workflows/test_lint_scan.yml
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read # Needed to check out repository
+      security-events: write # Needed by CodeQL to upload SARIF results
+      actions: read # Needed by CodeQL to inspect workflow actions
+    uses: ./.github/workflows/test_lint_scan.yml # zizmor: ignore[self-repository]
 
-  build_release:
+  build:
     name: Build Release
     needs: test-lint-scan
-    permissions:
-      # IMPORTANT: this permission is mandatory for trusted publishing to pypi
-      id-token: write
-      # This permissions is necessary for creating the GitHub release
-      contents: write
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # Needed to check out repository
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
+          version: "0.13.5"
           python-version: "3.13"
-      - name: Build Release
-        run: uv version --no-sync "$VERSION_NUMBER" && uv build
-        env:
-          VERSION_NUMBER: ${{ inputs.versionNumber }}
-      - name: Publish Release
-        run: uv publish
+          enable-cache: false
+      - name: Extract version and release notes from CHANGELOG.md
+        id: version
+        run: |
+          VERSION="$(uv version --short)"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version in pyproject.toml: $VERSION" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          VERSION="$VERSION" NOTES_OUT="$RUNNER_TEMP/release-notes.md" uv run --no-project python - <<'PY'
+          import os
+          import pathlib
+          import re
+          import sys
+
+          version = os.environ["VERSION"]
+          notes_out = pathlib.Path(os.environ["NOTES_OUT"])
+          lines = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8").splitlines()
+          header_re = re.compile(rf"^## \[{re.escape(version)}\](?:\s+-.*)?$")
+          next_section_re = re.compile(r"^## \[")
+          footer_link_re = re.compile(r"^\[[^\]]+\]:\s*https?://")
+
+          collecting = False
+          collected: list[str] = []
+          for line in lines:
+              if not collecting:
+                  if header_re.match(line):
+                      collecting = True
+                  continue
+              if next_section_re.match(line) or footer_link_re.match(line):
+                  break
+              collected.append(line)
+
+          body = "\n".join(collected).strip()
+          if not collecting or not body:
+              sys.stderr.write(f"Missing or empty CHANGELOG.md section for version {version}\n")
+              sys.exit(1)
+          notes_out.write_text(body + "\n", encoding="utf-8")
+          PY
+      - name: Install build dependencies
+        run: uv sync --locked --no-default-groups --group build --no-install-project
+      - name: Build and Verify sdist and wheel
+        run: |
+          uv build --no-preview --no-sources --clear
+          uv run --no-sync twine check --strict dist/*
+          uv run --no-sync python - <<'PY'
+          import pathlib
+          import tarfile
+          import tomllib
+          import zipfile
+
+          version = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+          wheels = list(pathlib.Path("dist").glob("*.whl"))
+          sdists = list(pathlib.Path("dist").glob("*.tar.gz"))
+          assert len(wheels) == 1, f"Expected 1 wheel, found {wheels}"
+          assert len(sdists) == 1, f"Expected 1 sdist, found {sdists}"
+
+          dist_info = f"cuid2-{version}.dist-info"
+          expected_wheel = {
+              "cuid2/__init__.py",
+              "cuid2/cli.py",
+              "cuid2/generator.py",
+              "cuid2/utils.py",
+              "cuid2/py.typed",
+              f"{dist_info}/METADATA",
+              f"{dist_info}/WHEEL",
+              f"{dist_info}/entry_points.txt",
+              f"{dist_info}/RECORD",
+              f"{dist_info}/licenses/LICENSE",
+          }
+          with zipfile.ZipFile(wheels[0]) as zf:
+              actual_wheel = {i.filename for i in zf.infolist() if not i.is_dir()}
+          assert actual_wheel == expected_wheel, f"Wheel mismatch: {actual_wheel ^ expected_wheel}"
+
+          sdist_prefix = f"cuid2-{version}"
+          expected_sdist = {
+              f"{sdist_prefix}/PKG-INFO",
+              f"{sdist_prefix}/README.md",
+              f"{sdist_prefix}/LICENSE",
+              f"{sdist_prefix}/pyproject.toml",
+              f"{sdist_prefix}/pyproject.toml.orig",
+              f"{sdist_prefix}/src/cuid2/__init__.py",
+              f"{sdist_prefix}/src/cuid2/cli.py",
+              f"{sdist_prefix}/src/cuid2/generator.py",
+              f"{sdist_prefix}/src/cuid2/utils.py",
+              f"{sdist_prefix}/src/cuid2/py.typed",
+          }
+          with tarfile.open(sdists[0], "r:gz") as tf:
+              actual_sdist = {m.name for m in tf.getmembers() if m.isfile()}
+          assert actual_sdist == expected_sdist, f"Sdist mismatch: {actual_sdist ^ expected_sdist}"
+          PY
+          WHEEL_TEST_DIR="$RUNNER_TEMP/wheel-test"
+          rm -rf "$WHEEL_TEST_DIR"
+          mkdir -p "$WHEEL_TEST_DIR"
+          UV_PROJECT_ENVIRONMENT="$WHEEL_TEST_DIR/venv" uv sync --locked --no-default-groups --group test --no-install-project
+          uv pip install --python "$WHEEL_TEST_DIR/venv/bin/python" --no-deps dist/*.whl
+          "$WHEEL_TEST_DIR/venv/bin/python" -I -c "import pathlib, cuid2; assert 'site-packages' in pathlib.Path(cuid2.__file__).parts, cuid2.__file__"
+          CLI_ID="$("$WHEEL_TEST_DIR/venv/bin/cuid2")"
+          test "${#CLI_ID}" -eq 24
+          (
+            cd "$WHEEL_TEST_DIR"
+            "$WHEEL_TEST_DIR/venv/bin/python" -I -m pytest -o cache_dir="$WHEEL_TEST_DIR/.pytest_cache" "$GITHUB_WORKSPACE/local/tests"
+          )
+          rm -rf "$WHEEL_TEST_DIR"
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/*
+          retention-days: 5
+          if-no-files-found: error
+      - name: Upload release notes artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/release-notes.md
+          retention-days: 5
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pypi
+    permissions:
+      id-token: write # Needed for OIDC trusted publishing and PEP 740 attestations
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - name: Publish distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  github-release:
+    name: Create GitHub Release
+    needs: [build, publish]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # Needed to create release tag and upload release assets
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - name: Download release notes artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-notes
+          path: release-notes
       - name: Create GitHub Release
-        run: gh release create "v$VERSION_NUMBER" --latest --generate-notes dist/*
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION_NUMBER: ${{ inputs.versionNumber }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version from build job: $VERSION" >&2
+            exit 1
+          fi
+          gh release create "v$VERSION" \
+            --repo "$GH_REPO" \
+            --target "$GITHUB_SHA" \
+            --title "v$VERSION" \
+            --notes-file release-notes/release-notes.md \
+            --latest \
+            dist/*.whl dist/*.tar.gz

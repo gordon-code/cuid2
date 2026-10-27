@@ -37,66 +37,31 @@ Issues = "https://github.com/gordon-code/cuid2/issues"
 cuid2 = "cuid2.cli:main"
 
 [tool.uv]
-default-groups = ["lint", "test", "tox", "typing"]
+default-groups = ["build", "lint", "test", "typing"]
 
 [dependency-groups]
+build = [
+    "twine==7.0.0",
+]
 lint = [
     "codespell==2.4.3",
     "ruff==0.17.0",
     "rumdl==0.3.0",
+    "zizmor==1.31.1; python_version >= '3.11'",
 ]
 test = [
     "pytest==9.1.1",
     "pytest-mock==3.16.0",
     "pytest-sugar==1.1.1",
 ]
-tox = [
-    "tox==4.65.4; python_version >= '3.11'",
-    "tox-uv==1.37.0; python_version >= '3.11'",
-]
 typing = [
     "mypy==2.4.0",
     "pyright[nodejs]==1.1.414",
 ]
 
-[tool.tox]
-legacy_tox_ini = """
-    [tox]
-    min_version = 4
-    env_list = py3{10,11,12,13,14}, check
-    work_dir = local/.tox
-    isolated_build = True
-
-    [testenv]
-    runner = uv-venv-lock-runner
-    description = run unit tests
-    dependency_groups = test
-    commands = pytest
-
-    [testenv:check]
-    runner = uv-venv-lock-runner
-    description = run linters and typing
-    package = wheel
-    setenv =
-        PYRIGHT_PYTHON_IGNORE_WARNINGS = 1
-    dependency_groups =
-        lint
-        typing
-        test
-    commands =
-        ruff check
-        ruff format --check
-        codespell
-        rumdl check
-        rumdl fmt --check
-        mypy
-        pyright
-        pyright --verifytypes cuid2 --ignoreexternal
-"""
-
 [tool.codespell]
 check-hidden = ""
-skip = ".cache,.claude,.git,.mypy_cache,.pdm-build,.pytest_cache,.ruff_cache,.rumdl_cache,.tox,.venv,__pycache__,build,dist,hack,uv.lock"
+skip = ".cache,.claude,.git,.mypy_cache,.pdm-build,.pytest_cache,.ruff_cache,.rumdl_cache,.venv,__pycache__,build,dist,hack,uv.lock"
 
 [tool.rumdl]
 cache-dir = "local/.rumdl_cache"

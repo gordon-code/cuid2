@@ -18,6 +18,13 @@ hooks = [
 ]
 
 [[repos]]
+repo = "https://github.com/rhysd/actionlint"
+rev = "914e7df21a07ef503a81201c76d2b11c789d3fca" # v1.7.12
+hooks = [
+  { id = "actionlint", pass_filenames = false, priority = 0 },
+]
+
+[[repos]]
 repo = "local"
 hooks = [
   {
@@ -88,6 +95,14 @@ hooks = [
     id = "pytest",
     name = "pytest",
     entry = "uv run pytest",
+    language = "system",
+    pass_filenames = false,
+    priority = 0,
+  },
+  {
+    id = "zizmor",
+    name = "zizmor",
+    entry = "uv run zizmor --offline --persona=pedantic .github/workflows",
     language = "system",
     pass_filenames = false,
     priority = 0,

@@ -16,6 +16,16 @@ on:
     # Weekly every Saturday at midnight
     - cron: '0 0 * * 6'
 
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   test-lint-scan:
-    uses: ./.github/workflows/test_lint_scan.yml
+    permissions:
+      contents: read # Needed to check out repository
+      security-events: write # Needed by CodeQL to upload SARIF results
+      actions: read # Needed by CodeQL to inspect workflow actions
+    uses: ./.github/workflows/test_lint_scan.yml # zizmor: ignore[self-repository]
