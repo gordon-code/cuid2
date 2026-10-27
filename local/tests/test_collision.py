@@ -4,14 +4,17 @@ from collections import Counter
 from functools import reduce
 from math import ceil, floor
 from multiprocessing import Pool
-from typing import Any, Callable, Dict, Iterable
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from cuid2 import Cuid
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
 
-def cuid_generator(max_ids: int) -> Dict[str, Any]:
+
+def cuid_generator(max_ids: int) -> dict[str, Any]:
     """Generate a specified number of unique IDs using the CUID library and return a dictionary containing
     information about the generated IDs.
 
@@ -117,11 +120,11 @@ def test_collisions(num_ids: int, num_pools: int) -> None:
         assert len(r["char_histogram"].keys()) == 36
 
     # should: produce even character frequency
-    sum_char_histograms: Counter = sum((r["char_histogram"] for r in result), Counter())
+    sum_char_histograms: Counter[str] = sum((r["char_histogram"] for r in result), Counter())
     expected_char_bin_size: int = ceil((23 * total_num_ids) / 36)
     assert is_histogram_evenly_distributed(sum_char_histograms.values(), expected_char_bin_size)
 
     # should: produce a histogram with even distribution tolerance
-    sum_id_histograms: Counter = sum((r["id_histogram"] for r in result), Counter())
+    sum_id_histograms: Counter[int] = sum((r["id_histogram"] for r in result), Counter())
     expected_id_bin_size: int = ceil(total_num_ids / len(sum_id_histograms.keys()))
     assert is_histogram_evenly_distributed(sum_id_histograms.values(), expected_id_bin_size)

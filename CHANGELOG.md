@@ -12,6 +12,10 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 - `Changelog` and `Issues` project URLs in the package metadata.
 
+### Changed
+
+- Internal: strengthened `ruff`, `mypy`, and `pyright` static checking and extended `codespell` to markdown documentation.
+
 ## [2.1.0] - 2026-10-25
 
 ### Added

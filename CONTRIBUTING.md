@@ -38,8 +38,7 @@ the codebase is consistent and free from regressions. Running with
 `uv run ruff check --fix src/ local/tests/ && uv run ruff format src/ local/tests/`
 enables quick updates to files during development.
 
-Prior to committing, we encourage running the following commands in
-order for your pull request to be accepted:
+Prior to committing, run the full test and static-analysis suite (`pytest` across Python 3.10–3.14, plus `ruff`, `codespell`, `pylint`, `mypy --strict`, `pyright`, and `pyright --verifytypes` against the built wheel in `[testenv:check]`):
 ```bash
 $ uv run tox p
 ```

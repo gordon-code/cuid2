@@ -1,5 +1,5 @@
 [build-system]
-requires = ["uv_build==0.13.5"]
+requires = ["uv_build>=0.7.0,<0.14.0"]
 build-backend = "uv_build"
 
 [project]
@@ -56,6 +56,7 @@ tox = [
 ]
 typing = [
     "mypy==2.4.0",
+    "pyright[nodejs]==1.1.414",
 ]
 
 [tool.tox]
@@ -75,7 +76,9 @@ legacy_tox_ini = """
     [testenv:check]
     runner = uv-venv-lock-runner
     description = run linters and typing
-    package = skip
+    package = wheel
+    setenv =
+        PYRIGHT_PYTHON_IGNORE_WARNINGS = 1
     dependency_groups =
         lint
         typing
@@ -83,9 +86,11 @@ legacy_tox_ini = """
     commands =
         ruff check src/ local/tests/
         ruff format --check src/ local/tests/
-        codespell src/ local/tests/
+        codespell src/ local/tests/ CHANGELOG.md README.md CONTRIBUTING.md
         pylint src/ local/tests/
         mypy src/ local/tests/
+        pyright src/ local/tests/
+        pyright --verifytypes cuid2 --ignoreexternal
 """
 
 [tool.ruff]
@@ -97,15 +102,7 @@ force-exclude = true
 
 [tool.ruff.lint]
 # https://docs.astral.sh/ruff/rules/
-select = [
-    "F", "E", "W", "C90", "I", "N", "ASYNC",
-    "S", "BLE", "B", "A", "COM", "C4",
-    "DTZ", "T10",  "EM", "FA", "ISC", "ICN",
-    "G", "INP", "PIE", "T20", "PT", "Q", "RSE",
-    "RET", "SLF", "SLOT", "SIM", "INT", "ARG",
-    "PTH", "PGH", "PL", "TRY", "FLY", "PERF",
-    "LOG", "RUF",
-]  # purposely not including "DJ", "YTT", "EXE", "PD", "NPY", "FBT" (boolean checking)
+select = ["ALL"]
 ignore = [
     "D100", # Missing docstring in public module
     "D101", # Missing docstring in public class
@@ -114,6 +111,8 @@ ignore = [
     "D205", # Blank line required between summary line and description
     "D401", # First line should be in imperative mood
     "COM812", "ISC001", # Conflict with formatter
+    "CPY001", # Missing copyright notice at top of file
+    "FBT001", "FBT002", # Boolean-typed positional argument in function definition
 ]
 # Don't automatically remove `print`
 # Stop automatically removing unused imports
@@ -124,7 +123,6 @@ unfixable = ["T201", "F401", "F841"]
 "test_*.py" = ["S101", "PLR2004", "SLF001"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["src"]
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
 [tool.ruff.lint.pydocstyle]
@@ -139,21 +137,22 @@ testpaths = ["local/tests"]
 [tool.pylint.master]
 ignore-patterns = "test_.*.py"
 
-[tool.pylint.format]
-max-line-length = 120
-
 [tool.pylint.messages_control]
 disable = [
-    "missing-module-docstring",
+    "duplicate-code",
+    "line-too-long",
     "missing-class-docstring",
+    "missing-module-docstring",
 ]
 
 [tool.pylint.design]
 max-parents = 13
 max-args = 10
 
-[tool.pylint.string]
-check-quote-consistency = "yes"
-
 [tool.mypy]
 cache_dir = "local/.mypy_cache"
+strict = true
+
+[tool.pyright]
+include = ["src", "local/tests"]
+strict = ["src"]
