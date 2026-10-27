@@ -95,7 +95,8 @@ legacy_tox_ini = """
 """
 
 [tool.codespell]
-skip = "build,dist,hack,uv.lock"
+check-hidden = ""
+skip = ".cache,.claude,.git,.mypy_cache,.pdm-build,.pytest_cache,.ruff_cache,.rumdl_cache,.tox,.venv,__pycache__,build,dist,hack,uv.lock"
 
 [tool.rumdl]
 cache-dir = "local/.rumdl_cache"
@@ -117,23 +118,17 @@ force-exclude = true
 # https://docs.astral.sh/ruff/rules/
 select = ["ALL"]
 ignore = [
-    "D100", # Missing docstring in public module
-    "D101", # Missing docstring in public class
-    "D102", # Missing docstring in public method
-    "D104", # Missing docstring in public package
-    "D205", # Blank line required between summary line and description
-    "D401", # First line should be in imperative mood
     "COM812", "ISC001", # Conflict with formatter
     "CPY001", # Missing copyright notice at top of file
-    "FBT001", "FBT002", # Boolean-typed positional argument in function definition
 ]
 # Don't automatically remove `print`
 # Stop automatically removing unused imports
 unfixable = ["T201", "F401", "F841"]
 
 [tool.ruff.lint.per-file-ignores]
-# Ignore `assert` in test files (S101), magic values (PLR2004), and private member accessed (SLF001)
-"test_*.py" = ["S101", "PLR2004", "SLF001"]
+# Test files: allow assert (S101), magic values (PLR2004), private member access (SLF001),
+# boolean test params (FBT001), and test docstring conventions (D1xx, D205, D401)
+"local/tests/*.py" = ["D100", "D101", "D102", "D103", "D104", "D205", "D401", "FBT001", "PLR2004", "S101", "SLF001"]
 
 [tool.ruff.lint.isort]
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]

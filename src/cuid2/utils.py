@@ -1,3 +1,5 @@
+"""Cryptographic hashing, entropy, counter, fingerprint, and base36 helpers for CUID2."""
+
 from __future__ import annotations
 
 import os
@@ -27,7 +29,7 @@ if TYPE_CHECKING:
 
 
 def create_counter(count: int) -> Callable[[], int]:
-    """Creates a counter that returns an incremented value each time it is called.
+    """Create a counter that returns an incremented value each time it is called.
 
     Parameters
     ----------
@@ -51,8 +53,7 @@ def create_counter(count: int) -> Callable[[], int]:
 
 
 def create_fingerprint(random_generator: Random, fingerprint_data: str | None = "") -> str:
-    """Creates a fingerprint, by default combining process ID, hostname, and environment variables
-    with entropy and then hashing the result.
+    """Create a host/process fingerprint combined with random entropy and hashed.
 
     Parameters
     ----------
@@ -81,7 +82,7 @@ def create_fingerprint(random_generator: Random, fingerprint_data: str | None = 
 
 
 def create_entropy(random_generator: Random, length: int = 4) -> str:
-    """Creates a random string of specified length using a base36 encoding.
+    """Create a random string of specified length using base36 encoding.
 
     Parameters
     ----------
@@ -110,8 +111,7 @@ def create_entropy(random_generator: Random, length: int = 4) -> str:
 
 
 def create_hash(data: str = "") -> str:
-    """Creates a hash value for a given string using the SHA3-512 algorithm and returns
-    it in base36 encoding format after dropping the first character.
+    """Create a base36-encoded SHA3-512 hash of `data` with the leading character dropped.
 
     Parameters
     ----------
@@ -133,7 +133,7 @@ def create_hash(data: str = "") -> str:
 
 
 def create_letter(random_generator: Random) -> str:
-    """Generates a random lowercase letter using a given random number generator.
+    """Generate a random lowercase ASCII letter using the given random number generator.
 
     Parameters
     ----------
@@ -149,7 +149,7 @@ def create_letter(random_generator: Random) -> str:
 
 
 def base36_encode(number: int) -> str:
-    """Encodes a positive integer into a base36 string.
+    """Encode a non-negative integer into a base36 string.
 
     Parameters
     ----------

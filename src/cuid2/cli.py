@@ -1,3 +1,5 @@
+"""Command-line interface for generating CUID2 identifiers."""
+
 from __future__ import annotations
 
 from argparse import ArgumentParser
