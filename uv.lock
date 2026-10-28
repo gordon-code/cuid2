@@ -387,7 +387,6 @@ default-groups = ["build", "lint", "test", "typing"]
 
 [package.dev-dependencies]
 build = [
-    { name = "keepachangelog" },
     { name = "twine" },
 ]
 lint = [
@@ -398,6 +397,7 @@ lint = [
     { name = "zizmor", marker = "python_full_version >= '3.11'" },
 ]
 test = [
+    { name = "keepachangelog" },
     { name = "pytest" },
     { name = "pytest-mock" },
     { name = "pytest-sugar" },
@@ -411,7 +411,6 @@ typing = [
 
 [package.metadata.requires-dev]
 build = [
-    { name = "keepachangelog", specifier = "==2.0.0" },
     { name = "twine", specifier = "==7.0.0" },
 ]
 lint = [
@@ -422,6 +421,7 @@ lint = [
     { name = "zizmor", marker = "python_full_version >= '3.11'", specifier = "==1.31.1" },
 ]
 test = [
+    { name = "keepachangelog", specifier = "==2.0.0" },
     { name = "pytest", specifier = "==9.1.1" },
     { name = "pytest-mock", specifier = "==3.16.0" },
     { name = "pytest-sugar", specifier = "==1.1.1" },

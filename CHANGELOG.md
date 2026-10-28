@@ -10,6 +10,7 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 ### Added
 
+- Python 3.15 support in CI and package classifiers.
 - `Changelog` and `Issues` project URLs in the package metadata.
 
 ### Changed

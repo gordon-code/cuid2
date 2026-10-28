@@ -23,6 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Topic :: Security :: Cryptography",
     "Typing :: Typed",
 ]
@@ -41,7 +42,6 @@ default-groups = ["build", "lint", "test", "typing"]
 
 [dependency-groups]
 build = [
-    "keepachangelog==2.0.0",
     "twine==7.0.0",
 ]
 lint = [
@@ -52,6 +52,7 @@ lint = [
     "zizmor==1.31.1; python_version >= '3.11'",
 ]
 test = [
+    "keepachangelog==2.0.0",
     "pytest==9.1.1",
     "pytest-mock==3.16.0",
     "pytest-sugar==1.1.1",
@@ -63,6 +64,7 @@ typing = [
 
 [tool.codespell]
 check-hidden = ""
+ignore-words-list = "intoto"
 skip = ".cache,.claude,.git,.mypy_cache,.pdm-build,.pytest_cache,.ruff_cache,.rumdl_cache,.venv,__pycache__,build,dist,hack,uv.lock"
 
 [tool.rumdl]
