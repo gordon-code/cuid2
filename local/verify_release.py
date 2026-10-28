@@ -11,14 +11,19 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import keepachangelog
-import tomllib
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-DEFAULT_PYPROJECT_PATH = Path("pyproject.toml")
-DEFAULT_CHANGELOG_PATH = Path("CHANGELOG.md")
-DEFAULT_DIST_DIR = Path("dist")
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_PYPROJECT_PATH = _REPO_ROOT / "pyproject.toml"
+DEFAULT_CHANGELOG_PATH = _REPO_ROOT / "CHANGELOG.md"
+DEFAULT_DIST_DIR = _REPO_ROOT / "dist"
 DEFAULT_REPO_URL = "https://github.com/gordon-code/cuid2"
 
 _MIN_RELEASES = 2
