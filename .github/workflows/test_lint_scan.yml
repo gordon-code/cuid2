@@ -59,7 +59,6 @@ jobs:
         run: uv sync --locked --no-default-groups --group build --group lint --group typing --group test --no-editable
       - name: Run Linting and Type Checking
         env:
-          PYRIGHT_PYTHON_IGNORE_WARNINGS: "1"
           SKIP: pytest,actionlint,zizmor
           UV_NO_SYNC: "1"
         run: uv run --no-sync prek run --all-files
@@ -102,16 +101,11 @@ jobs:
           python-version: "3.13"
       - name: Install dependencies
         run: uv sync --locked --no-default-groups --group lint --no-install-project
-      - name: Run zizmor
+      - name: Run workflow linters
         env:
           GH_TOKEN: ${{ github.token }}
-        run: uv run --no-sync zizmor --persona=pedantic .github/workflows
-      - name: Run actionlint
-        run: |
-          curl -fsSL https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$RUNNER_TEMP/actionlint.tar.gz"
-          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
-          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
-          "$RUNNER_TEMP/actionlint" -color
+          UV_NO_SYNC: "1"
+        run: uv run --no-sync prek run --all-files actionlint zizmor
 
   scan:
     name: Scanning

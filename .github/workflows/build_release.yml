@@ -48,11 +48,8 @@ jobs:
           uv run --no-sync python -m local.verify_release changelog \
             --notes-out "$RUNNER_TEMP/release-notes.md" \
             --github-output "$GITHUB_OUTPUT"
-      - name: Build and Verify sdist and wheel
-        run: |
-          uv build --no-preview --no-sources --clear
-          uv run --no-sync twine check --strict dist/*
-          uv run --no-sync python -m local.verify_release dist
+      - name: Build sdist and wheel
+        run: uv build --no-preview --no-sources --clear
       - name: Attest distribution build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:

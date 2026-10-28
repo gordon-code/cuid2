@@ -110,7 +110,7 @@ hooks = [
   {
     id = "zizmor",
     name = "zizmor",
-    entry = "uv run zizmor --offline --persona=pedantic .github/workflows",
+    entry = "uv run zizmor --persona=pedantic .github/workflows",
     language = "system",
     pass_filenames = false,
     priority = 0,
