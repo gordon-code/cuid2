@@ -138,11 +138,14 @@ jobs:
             echo "Missing provenance bundle in provenance/" >&2
             exit 1
           fi
-          cp "$BUNDLE_FILE" "provenance/cuid2-${VERSION}.intoto.jsonl"
+          cp "$BUNDLE_FILE" "provenance/cuid2-${VERSION}.sigstore.json"
+          jq -ce '.dsseEnvelope' "$BUNDLE_FILE" > "provenance/cuid2-${VERSION}.intoto.jsonl"
           gh release create "v$VERSION" \
             --repo "$GH_REPO" \
             --target "$GITHUB_SHA" \
             --title "v$VERSION" \
             --notes-file release-notes/release-notes.md \
             --latest \
-            dist/*.whl dist/*.tar.gz "provenance/cuid2-${VERSION}.intoto.jsonl"
+            dist/*.whl dist/*.tar.gz \
+            "provenance/cuid2-${VERSION}.sigstore.json" \
+            "provenance/cuid2-${VERSION}.intoto.jsonl"
