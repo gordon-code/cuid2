@@ -3,61 +3,132 @@ on:
   workflow_call: {}
   workflow_dispatch: {}
 
+permissions: {}
+
+concurrency:
+  group: test-lint-scan-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     name: Testing
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    permissions:
+      contents: read # Needed to check out repository
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-
-    runs-on: ${{ matrix.os }}
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
+          version: "0.13.5"
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: |
-          uv sync --group test
+        run: uv sync --locked --no-default-groups --group test --no-editable
       - name: Run Testing
         run: |
-          uv run -v pytest local/tests
+          uv run --no-sync cuid2
+          uv run --no-sync -v pytest
 
   lint:
     name: Linting
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # Needed to check out repository
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
+          version: "0.13.5"
           python-version: "3.13"
       - name: Install dependencies
+        run: uv sync --locked --no-default-groups --group build --group lint --group typing --group test --no-editable
+      - name: Run Linting and Type Checking
+        env:
+          SKIP: pytest,actionlint,zizmor
+          UV_NO_SYNC: "1"
+        run: uv run --no-sync prek run --all-files
+      - name: Build and Verify sdist and wheel
         run: |
-          uv sync --group tox
-      - name: Run Linting
-        run: |
-          uv run -v tox r -e check
+          uv build --no-preview --no-sources --clear
+          uv run --no-sync twine check --strict dist/*
+          uv run --no-sync python -m local.verify_release dist
+          WHEEL_TEST_DIR="$RUNNER_TEMP/wheel-test"
+          rm -rf "$WHEEL_TEST_DIR"
+          mkdir -p "$WHEEL_TEST_DIR"
+          uv build --no-preview --no-sources --wheel dist/*.tar.gz --out-dir "$WHEEL_TEST_DIR/from-sdist"
+          UV_PROJECT_ENVIRONMENT="$WHEEL_TEST_DIR/venv" uv sync --locked --no-default-groups --group test --no-install-project
+          uv pip install --python "$WHEEL_TEST_DIR/venv/bin/python" --no-deps dist/*.whl
+          "$WHEEL_TEST_DIR/venv/bin/python" -I -c "import pathlib, cuid2; assert 'site-packages' in pathlib.Path(cuid2.__file__).parts, cuid2.__file__"
+          CLI_ID="$("$WHEEL_TEST_DIR/venv/bin/cuid2")"
+          test "${#CLI_ID}" -eq 24
+          (
+            cd "$WHEEL_TEST_DIR"
+            "$WHEEL_TEST_DIR/venv/bin/python" -I -m pytest -o cache_dir="$WHEEL_TEST_DIR/.pytest_cache" "$GITHUB_WORKSPACE/local/tests"
+          )
+          rm -rf dist "$WHEEL_TEST_DIR"
+
+  workflow-lint:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # Needed to check out repository
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.5"
+          python-version: "3.13"
+      - name: Install dependencies
+        run: uv sync --locked --no-default-groups --group lint --no-install-project
+      - name: Run workflow linters
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UV_NO_SYNC: "1"
+        run: uv run --no-sync prek run --all-files actionlint zizmor
 
   scan:
     name: Scanning
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # Needed to check out repository
+      security-events: write # Needed by CodeQL to upload SARIF results
+      actions: read # Needed by CodeQL to inspect workflow actions
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Set up uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
+          version: "0.13.5"
           python-version: "3.13"
       - name: Install dependencies
-        run: |
-          uv sync --all-groups --no-install-project
+        run: uv sync --locked --all-groups --no-install-project
       - name: Initialize Runtime Code Analysis
         uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
@@ -67,4 +138,4 @@ jobs:
         env:
           CODEQL_EXTRACTOR_PYTHON_ANALYSIS_VERSION: "3.13"
       - name: Perform Secure Code Analysis (Secrets)
-        uses: trufflesecurity/trufflehog@bc3a3ae6e097580bdef61492c78f79a4651319df # main
+        uses: trufflesecurity/trufflehog@31ce31ee1abbcc7dc8eee5764c17121c3044c8b2 # v3.99.7
