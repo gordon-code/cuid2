@@ -100,6 +100,14 @@ hooks = [
     priority = 0,
   },
   {
+    id = "verify-changelog",
+    name = "verify changelog",
+    entry = "uv run python -m local.verify_release changelog",
+    language = "system",
+    pass_filenames = false,
+    priority = 0,
+  },
+  {
     id = "zizmor",
     name = "zizmor",
     entry = "uv run zizmor --offline --persona=pedantic .github/workflows",

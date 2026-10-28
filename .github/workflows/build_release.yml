@@ -25,6 +25,8 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read # Needed to check out repository
+      id-token: write # Needed to sign SLSA build provenance attestations
+      attestations: write # Needed to persist SLSA build provenance attestations on GitHub
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -38,124 +40,25 @@ jobs:
           version: "0.13.5"
           python-version: "3.13"
           enable-cache: false
+      - name: Install build dependencies
+        run: uv sync --locked --no-default-groups --group build --no-install-project
       - name: Extract version and release notes from CHANGELOG.md
         id: version
         run: |
-          VERSION="$(uv version --short)"
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid version in pyproject.toml: $VERSION" >&2
-            exit 1
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          VERSION="$VERSION" NOTES_OUT="$RUNNER_TEMP/release-notes.md" uv run --no-project python - <<'PY'
-          import os
-          import pathlib
-          import re
-          import sys
-
-          version = os.environ["VERSION"]
-          notes_out = pathlib.Path(os.environ["NOTES_OUT"])
-          lines = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8").splitlines()
-          header_re = re.compile(rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$")
-          next_section_re = re.compile(r"^## ")
-          footer_link_re = re.compile(r"^\[[^\]]+\]:\s*https?://")
-
-          h2_headers = [line for line in lines if next_section_re.match(line)]
-          if len(h2_headers) < 2 or h2_headers[0] != "## [Unreleased]" or not header_re.match(h2_headers[1]):
-              sys.stderr.write(
-                  f"Expected '## [Unreleased]' followed by '## [{version}] - YYYY-MM-DD' in CHANGELOG.md\n"
-              )
-              sys.exit(1)
-
-          unreleased_link = f"[Unreleased]: https://github.com/gordon-code/cuid2/compare/v{version}...HEAD"
-          version_link_prefix = f"[{version}]: https://github.com/gordon-code/cuid2/"
-          if unreleased_link not in lines or not any(line.startswith(version_link_prefix) for line in lines):
-              sys.stderr.write(f"Missing or stale compare links for {version} in CHANGELOG.md footer\n")
-              sys.exit(1)
-
-          collecting = False
-          collected: list[str] = []
-          for line in lines:
-              if not collecting:
-                  if header_re.match(line):
-                      collecting = True
-                  continue
-              if next_section_re.match(line) or footer_link_re.match(line):
-                  break
-              collected.append(line)
-
-          body = "\n".join(collected).strip()
-          if not collecting or not body:
-              sys.stderr.write(f"Missing or empty CHANGELOG.md section for version {version}\n")
-              sys.exit(1)
-          notes_out.write_text(body + "\n", encoding="utf-8")
-          PY
-      - name: Install build dependencies
-        run: uv sync --locked --no-default-groups --group build --no-install-project
+          uv run --no-sync python -m local.verify_release changelog \
+            --notes-out "$RUNNER_TEMP/release-notes.md" \
+            --github-output "$GITHUB_OUTPUT"
       - name: Build and Verify sdist and wheel
         run: |
           uv build --no-preview --no-sources --clear
           uv run --no-sync twine check --strict dist/*
-          uv run --no-sync python - <<'PY'
-          import pathlib
-          import tarfile
-          import tomllib
-          import zipfile
-
-          version = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
-          wheels = list(pathlib.Path("dist").glob("*.whl"))
-          sdists = list(pathlib.Path("dist").glob("*.tar.gz"))
-          assert len(wheels) == 1, f"Expected 1 wheel, found {wheels}"
-          assert len(sdists) == 1, f"Expected 1 sdist, found {sdists}"
-
-          dist_info = f"cuid2-{version}.dist-info"
-          expected_wheel = {
-              "cuid2/__init__.py",
-              "cuid2/cli.py",
-              "cuid2/generator.py",
-              "cuid2/utils.py",
-              "cuid2/py.typed",
-              f"{dist_info}/METADATA",
-              f"{dist_info}/WHEEL",
-              f"{dist_info}/entry_points.txt",
-              f"{dist_info}/RECORD",
-              f"{dist_info}/licenses/LICENSE",
-          }
-          with zipfile.ZipFile(wheels[0]) as zf:
-              actual_wheel = {i.filename for i in zf.infolist() if not i.is_dir()}
-          assert actual_wheel == expected_wheel, f"Wheel mismatch: {actual_wheel ^ expected_wheel}"
-
-          sdist_prefix = f"cuid2-{version}"
-          expected_sdist = {
-              f"{sdist_prefix}/PKG-INFO",
-              f"{sdist_prefix}/README.md",
-              f"{sdist_prefix}/LICENSE",
-              f"{sdist_prefix}/pyproject.toml",
-              f"{sdist_prefix}/pyproject.toml.orig",
-              f"{sdist_prefix}/src/cuid2/__init__.py",
-              f"{sdist_prefix}/src/cuid2/cli.py",
-              f"{sdist_prefix}/src/cuid2/generator.py",
-              f"{sdist_prefix}/src/cuid2/utils.py",
-              f"{sdist_prefix}/src/cuid2/py.typed",
-          }
-          with tarfile.open(sdists[0], "r:gz") as tf:
-              actual_sdist = {m.name for m in tf.getmembers() if m.isfile()}
-          assert actual_sdist == expected_sdist, f"Sdist mismatch: {actual_sdist ^ expected_sdist}"
-          PY
-          WHEEL_TEST_DIR="$RUNNER_TEMP/wheel-test"
-          rm -rf "$WHEEL_TEST_DIR"
-          mkdir -p "$WHEEL_TEST_DIR"
-          uv build --no-preview --no-sources --wheel dist/*.tar.gz --out-dir "$WHEEL_TEST_DIR/from-sdist"
-          UV_PROJECT_ENVIRONMENT="$WHEEL_TEST_DIR/venv" uv sync --locked --no-default-groups --group test --no-install-project
-          uv pip install --python "$WHEEL_TEST_DIR/venv/bin/python" --no-deps dist/*.whl
-          "$WHEEL_TEST_DIR/venv/bin/python" -I -c "import pathlib, cuid2; assert 'site-packages' in pathlib.Path(cuid2.__file__).parts, cuid2.__file__"
-          CLI_ID="$("$WHEEL_TEST_DIR/venv/bin/cuid2")"
-          test "${#CLI_ID}" -eq 24
-          (
-            cd "$WHEEL_TEST_DIR"
-            "$WHEEL_TEST_DIR/venv/bin/python" -I -m pytest -o cache_dir="$WHEEL_TEST_DIR/.pytest_cache" "$GITHUB_WORKSPACE/local/tests"
-          )
-          rm -rf "$WHEEL_TEST_DIR"
+          uv run --no-sync python -m local.verify_release dist
+      - name: Attest distribution build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.whl
+            dist/*.tar.gz
       - name: Upload distribution artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -188,6 +91,8 @@ jobs:
           path: dist
       - name: Publish distributions to PyPI
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          attestations: true
 
   github-release:
     name: Create GitHub Release

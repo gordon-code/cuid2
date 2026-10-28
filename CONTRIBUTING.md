@@ -39,12 +39,12 @@ git checkout -b my-new-feature
 We rely on a number of formatters, linters, and tests to ensure that
 the codebase is consistent and free from regressions. Running with
 `uv run ruff check --fix && uv run ruff format && uv run rumdl fmt`
-enables quick updates to files during development. You can also install and run the parallel pre-commit hooks via [`prek`](https://github.com/j178/prek) (`prek install && prek run --all-files`).
+enables quick updates to files during development. You can also install and run the parallel pre-commit hooks via [`prek`](https://github.com/j178/prek) (`uv run prek install && uv run prek run --all-files`).
 
-Prior to committing, run the full test, static-analysis, and workflow-linting suite (`pytest`, `ruff`, `codespell`, `rumdl`, `mypy --strict`, `pyright`, `pyright --verifytypes`, `zizmor`, and `actionlint`):
+Prior to committing, run the full test, static-analysis, and workflow-linting suite (`pytest`, `ruff`, `codespell`, `rumdl`, `mypy --strict`, `pyright`, `pyright --verifytypes`, `verify-changelog`, `zizmor`, and `actionlint`):
 
 ```bash
-prek run --all-files
+uv run prek run --all-files
 ```
 
 You can also audit GitHub Actions workflows directly with `uv run zizmor --persona=pedantic .github/workflows`.
@@ -58,7 +58,7 @@ Pull requests that change behavior, packaging, or documentation that consumers r
 To cut a release:
 
 1. Open a release PR that renames `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`, adds a fresh empty `## [Unreleased]` section above it, bumps `version` in `pyproject.toml` and `uv.lock`, and updates the compare-link footer in `CHANGELOG.md` (adds `[X.Y.Z]` comparing `v<prev>...vX.Y.Z` and updates `[Unreleased]` to `compare/vX.Y.Z...HEAD`).
-2. After the release PR merges to `main`, dispatch `.github/workflows/build_release.yml` from `main` and approve the `pypi` environment deployment when prompted (the workflow reads the version from `pyproject.toml`, extracts the matching `## [X.Y.Z]` section from `CHANGELOG.md`, verifies the built sdist and wheel, publishes distributions with PEP 740 attestations via `pypa/gh-action-pypi-publish`, and creates the GitHub release tagged at the built commit). Verify the published attestation at `https://pypi.org/integrity/cuid2/<version>/<wheel>/provenance`.
+2. After the release PR merges to `main`, dispatch `.github/workflows/build_release.yml` from `main` and approve the `pypi` environment deployment when prompted (the workflow reads the version from `pyproject.toml`, validates and extracts the matching `## [X.Y.Z]` section from `CHANGELOG.md` via `local.verify_release`, verifies and attests SLSA build provenance for the built sdist and wheel via `actions/attest`, publishes distributions with PEP 740 attestations via `pypa/gh-action-pypi-publish`, and creates the GitHub release tagged at the built commit). Verify the published attestations via `gh attestation verify <dist> --owner gordon-code` and at `https://pypi.org/integrity/cuid2/<version>/<wheel>/provenance`.
 
 ## Submitting Pull Requests
 

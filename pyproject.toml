@@ -41,10 +41,12 @@ default-groups = ["build", "lint", "test", "typing"]
 
 [dependency-groups]
 build = [
+    "keepachangelog==2.0.0",
     "twine==7.0.0",
 ]
 lint = [
     "codespell==2.4.3",
+    "prek==0.5.7",
     "ruff==0.17.0",
     "rumdl==0.3.0",
     "zizmor==1.31.1; python_version >= '3.11'",
@@ -112,6 +114,10 @@ cache_dir = "local/.mypy_cache"
 files = ["."]
 exclude = ["^build/", "^dist/", "^hack/"]
 strict = true
+
+[[tool.mypy.overrides]]
+module = ["keepachangelog"]
+ignore_missing_imports = true
 
 [tool.pyright]
 exclude = ["build", "dist", "hack"]
