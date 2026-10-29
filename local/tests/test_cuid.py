@@ -499,12 +499,6 @@ class TestIsCuid:
         assert is_cuid(generated, min_length=DEFAULT_LENGTH + 1) is False
 
 
-@pytest.fixture(autouse=True)
-def _reset_default_generator(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Restores _default_generator after each test while preserving its import-time value."""
-    monkeypatch.setattr(cuid2.generator, "_default_generator", cuid2.generator._default_generator)
-
-
 class TestCreateId:
     def test_create_id_lazy_singleton(self: TestCreateId, mocker: Mock) -> None:
         """Tests that create_id() lazily initializes _default_generator and reuses the singleton instance."""
@@ -551,6 +545,7 @@ class TestCreateId:
             (0, r"Length must be at least 1 character\."),
             (-1, r"Length must be at least 1 character\."),
             (True, r"Length must be at least 1 character\."),
+            (False, r"Length must be at least 1 character\."),
             (MAXIMUM_LENGTH + 1, r"Length must never exceed 98 characters\."),
         ],
     )
@@ -635,6 +630,7 @@ class TestCuidWrapper:
             (0, r"Length must be at least 1 character\."),
             (-1, r"Length must be at least 1 character\."),
             (True, r"Length must be at least 1 character\."),
+            (False, r"Length must be at least 1 character\."),
             (MAXIMUM_LENGTH + 1, r"Length must never exceed 98 characters\."),
         ],
     )
@@ -649,12 +645,22 @@ class TestCuidWrapper:
 
 
 class TestCli:
-    def test_cli_default_length(self: TestCli, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_cli_default_length(
+        self: TestCli,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
         """Tests that the CLI prints a default-length CUID when invoked without arguments."""
         cli_main([])
         output = capsys.readouterr().out.strip()
         assert len(output) == DEFAULT_LENGTH
         assert output[0].isalpha()
+
+        monkeypatch.setattr("sys.argv", ["cuid2"])
+        cli_main()
+        output_default_argv = capsys.readouterr().out.strip()
+        assert len(output_default_argv) == DEFAULT_LENGTH
+        assert output_default_argv[0].isalpha()
 
     @pytest.mark.parametrize("length", [MIN_LENGTH, 10, BIG_LENGTH])
     def test_cli_custom_length(self: TestCli, length: int, capsys: pytest.CaptureFixture[str]) -> None:

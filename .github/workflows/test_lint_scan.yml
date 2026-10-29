@@ -62,6 +62,10 @@ jobs:
           SKIP: pytest,actionlint,zizmor
           UV_NO_SYNC: "1"
         run: uv run --no-sync prek run --all-files
+      - name: Run Benchmark and Bounded Collision Suite
+        env:
+          UV_NO_SYNC: "1"
+        run: uv run --no-sync prek run --stage pre-push --all-files pytest-slow
       - name: Build and Verify sdist and wheel
         run: |
           uv build --no-preview --no-sources --clear
@@ -78,7 +82,7 @@ jobs:
           test "${#CLI_ID}" -eq 24
           (
             cd "$WHEEL_TEST_DIR"
-            "$WHEEL_TEST_DIR/venv/bin/python" -I -m pytest -o cache_dir="$WHEEL_TEST_DIR/.pytest_cache" "$GITHUB_WORKSPACE/local/tests"
+            COVERAGE_FILE="$WHEEL_TEST_DIR/.coverage" "$WHEEL_TEST_DIR/venv/bin/python" -I -m pytest -c "$GITHUB_WORKSPACE/pyproject.toml" --cov-config="$GITHUB_WORKSPACE/pyproject.toml" -o cache_dir="$WHEEL_TEST_DIR/.pytest_cache" "$GITHUB_WORKSPACE/local/tests"
           )
           rm -rf dist "$WHEEL_TEST_DIR"
 

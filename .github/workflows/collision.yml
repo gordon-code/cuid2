@@ -1,0 +1,37 @@
+name: Statistical Collision Suite
+on:
+  schedule:
+    # Weekly every Sunday at 02:00 UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: collision-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
+
+jobs:
+  collision:
+    name: Collision Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read # Needed to check out repository
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.5"
+          python-version: "3.13"
+      - name: Install dependencies
+        run: uv sync --locked --no-default-groups --group test --no-editable
+      - name: Run deep property-based fuzzing
+        run: uv run --no-sync -v pytest --no-cov --hypothesis-profile=deep local/tests/test_fuzz.py
+      - name: Run heavy statistical collision suite
+        run: uv run --no-sync -v pytest --no-cov -m heavy
