@@ -61,13 +61,13 @@ uv run prek run --all-files
 
 You can also audit GitHub Actions workflows directly with `uv run zizmor --persona=pedantic .github/workflows`.
 
-To catch collision or performance regressions locally, you can run the `@pytest.mark.slow` suite (the 50k-ID generation benchmark and bounded 3M-ID statistical collision suite):
+To catch collision or performance regressions locally, the `@pytest.mark.slow` suite (the 50k-ID generation benchmark and bounded 3M-ID statistical collision suite) runs automatically on `git push` via the `pre-push` hook in `prek.toml` and in PR CI, or can be invoked directly:
 
 ```bash
 uv run pytest --no-cov -m slow
 ```
 
-The 100M-ID `@pytest.mark.heavy` cases (`-m "slow or heavy"`) are intended for CI via [`.github/workflows/collision.yml`](.github/workflows/collision.yml) rather than developer laptops.
+The 100M-ID `@pytest.mark.heavy` cases (`-m heavy`) are intended for scheduled/manual CI via [`.github/workflows/collision.yml`](.github/workflows/collision.yml) rather than developer laptops.
 
 ## Changelog
 

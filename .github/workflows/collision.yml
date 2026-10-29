@@ -3,13 +3,7 @@ on:
   schedule:
     # Weekly every Sunday at 02:00 UTC
     - cron: '0 2 * * 0'
-  workflow_dispatch:
-    inputs:
-      include_heavy:
-        description: 'Include heavy 100M-ID collision cases (pre-release check)'
-        required: false
-        default: false
-        type: boolean
+  workflow_dispatch: {}
 
 permissions: {}
 
@@ -37,12 +31,5 @@ jobs:
           python-version: "3.13"
       - name: Install dependencies
         run: uv sync --locked --no-default-groups --group test --no-editable
-      - name: Run statistical collision suite
-        env:
-          INCLUDE_HEAVY: ${{ inputs.include_heavy && 'true' || 'false' }}
-        run: |
-          if [ "${INCLUDE_HEAVY}" = "true" ]; then
-            uv run --no-sync -v pytest --no-cov -m "slow or heavy"
-          else
-            uv run --no-sync -v pytest --no-cov -m slow
-          fi
+      - name: Run heavy statistical collision suite
+        run: uv run --no-sync -v pytest --no-cov -m heavy

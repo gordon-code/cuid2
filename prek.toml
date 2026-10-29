@@ -100,6 +100,15 @@ hooks = [
     priority = 0,
   },
   {
+    id = "pytest-slow",
+    name = "pytest (slow)",
+    entry = "uv run pytest --no-cov -m slow",
+    language = "system",
+    pass_filenames = false,
+    stages = ["pre-push"],
+    priority = 0,
+  },
+  {
     id = "verify-changelog",
     name = "verify changelog",
     entry = "uv run python -m local.verify_release changelog",
