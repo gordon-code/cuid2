@@ -3,6 +3,10 @@ from __future__ import annotations
 import sys
 
 import pytest
+from hypothesis import settings
+
+settings.register_profile("ci", settings.get_profile("ci"), derandomize=False)
+settings.register_profile("deep", settings.get_profile("ci"), max_examples=10_000)
 
 
 @pytest.fixture(autouse=True)

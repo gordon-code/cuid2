@@ -31,5 +31,7 @@ jobs:
           python-version: "3.13"
       - name: Install dependencies
         run: uv sync --locked --no-default-groups --group test --no-editable
+      - name: Run deep property-based fuzzing
+        run: uv run --no-sync -v pytest --no-cov --hypothesis-profile=deep local/tests/test_fuzz.py
       - name: Run heavy statistical collision suite
         run: uv run --no-sync -v pytest --no-cov -m heavy

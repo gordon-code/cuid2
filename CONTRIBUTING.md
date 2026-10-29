@@ -69,6 +69,12 @@ uv run pytest --no-cov -m slow
 
 The 100M-ID `@pytest.mark.heavy` cases (`-m heavy`) are intended for scheduled/manual CI via [`.github/workflows/collision.yml`](.github/workflows/collision.yml) rather than developer laptops.
 
+The `hypothesis` property tests in `local/tests/test_fuzz.py` search new random inputs on every run, locally and in CI. A failure prints the falsifying example and an `@reproduce_failure(...)` decorator that replays it. For a longer search (10,000 examples per test, also run weekly in `collision.yml`), use the `deep` profile:
+
+```bash
+uv run pytest --no-cov --hypothesis-profile=deep local/tests/test_fuzz.py
+```
+
 ## Changelog
 
 Pull requests that change behavior, packaging, or documentation that consumers read should add a brief, user-facing entry under `## [Unreleased]` in `CHANGELOG.md` using the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) categories (`Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`). Repository, CI, test, tooling, and dependency hygiene is folded into a single `Internal:` bullet under `### Changed` for the release rather than itemized per PR. Contributor pull requests do not bump the package version; the maintainer bumps the version in the release PR.
