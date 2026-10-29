@@ -130,11 +130,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-groups --no-install-project
       - name: Initialize Runtime Code Analysis
-        uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           languages: python
       - name: Perform Runtime Code Analysis
-        uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         env:
           CODEQL_EXTRACTOR_PYTHON_ANALYSIS_VERSION: "3.13"
       - name: Perform Secure Code Analysis (Secrets)
