@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from collections import Counter
 from math import ceil, floor
 from multiprocessing import Pool
@@ -101,13 +100,12 @@ def test_collisions(num_ids: int, num_pools: int) -> None:
     Parameters
     ----------
     num_ids : int
-        The number of unique IDs to generate in each pool task.
+        The number of unique IDs to generate in each pool.
     num_pools : int
-        The number of independent generator tasks to dispatch across the worker pool (capped at os.cpu_count()).
+        The `num_pools` parameter represents the number of worker processes to use in parallel for generating CUIDs.
     """
     total_num_ids: int = num_ids * num_pools
-    effective_pools: int = min(num_pools, os.cpu_count() or 1)
-    with Pool(effective_pools) as pool:
+    with Pool(num_pools) as pool:
         result = pool.map(cuid_generator, (num_ids,) * num_pools)
 
     # should: generate no collisions
