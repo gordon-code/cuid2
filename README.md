@@ -79,22 +79,27 @@ print(is_cuid(my_cuid))  # True
 
 > **Tip for Django & ORM defaults:** Pass `default=create_id` directly on model fields (e.g., `models.CharField(max_length=24, default=create_id)`). Because `create_id` is a top-level function backed by a lazy singleton generator, Django `makemigrations` can serialize it directly and `Cuid()` initialization is deferred until the first ID is generated in each worker process.
 
-You can also generate CUIDs directly in the terminal (optionally specifying a custom length):
+You can also generate and validate CUIDs directly in the terminal:
 
 ```bash
-cuid2
-cuid2 10
+cuid2                        # Generate a 24-character CUID2
+cuid2 -l 10                  # Generate a 10-character CUID2 (or positional: cuid2 10)
+cuid2 --slug                 # Generate a 5-character short ID slug
+cuid2 -n 5                   # Generate 5 CUID2s in a batch
+cuid2 -f server-1            # Generate with a custom host fingerprint
+cuid2 --check <id>           # Validate an ID (prints "<id>: valid" or "<id>: invalid"; -q for exit code only)
+cuid2 -n 5 | cuid2 --check - # Validate newline-delimited IDs from stdin
+python -m cuid2              # Run via module execution
 ```
 
-If a framework, dataclass, or Django migration requires a zero-argument callable with a custom length, use `functools.partial` with `create_id`:
+If a framework, dataclass, or Django migration requires a zero-argument callable with a custom length, use `cuid_wrapper` (which returns `functools.partial(create_id, length=10)` directly, making it picklable for `multiprocessing` and serializable by Django `makemigrations`):
 
 ```python
 from collections.abc import Callable
-from functools import partial
 
-from cuid2 import create_id
+from cuid2 import cuid_wrapper
 
-short_cuid_generator: Callable[[], str] = partial(create_id, length=10)
+short_cuid_generator: Callable[[], str] = cuid_wrapper(length=10)
 
 
 def main() -> None:

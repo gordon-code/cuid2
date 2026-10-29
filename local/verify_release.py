@@ -172,6 +172,7 @@ def expected_wheel_members(version: str) -> set[str]:
     dist_info = f"cuid2-{version}.dist-info"
     return {
         "cuid2/__init__.py",
+        "cuid2/__main__.py",
         "cuid2/cli.py",
         "cuid2/generator.py",
         "cuid2/utils.py",
@@ -205,6 +206,7 @@ def expected_sdist_members(version: str) -> set[str]:
         f"{sdist_prefix}/pyproject.toml",
         f"{sdist_prefix}/pyproject.toml.orig",
         f"{sdist_prefix}/src/cuid2/__init__.py",
+        f"{sdist_prefix}/src/cuid2/__main__.py",
         f"{sdist_prefix}/src/cuid2/cli.py",
         f"{sdist_prefix}/src/cuid2/generator.py",
         f"{sdist_prefix}/src/cuid2/utils.py",

@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 import importlib
+import importlib.metadata
+import io
+import pickle
+import runpy
+import sys
 import warnings
+from functools import partial
 from math import floor
 from secrets import SystemRandom
 from timeit import repeat
@@ -454,8 +460,7 @@ class TestIsCuid:
     #  Tests that ids generated via generate(length=...) and via the wrapper also validate.
     def test_is_cuid_accepts_generate_override_and_wrapper(self: TestIsCuid) -> None:
         cuid = Cuid()
-        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
-            wrapper = cuid_wrapper()
+        wrapper = cuid_wrapper()
         for _ in range(250):
             assert Cuid.is_cuid(cuid.generate(length=8)) is True
             assert Cuid.is_cuid(wrapper()) is True
@@ -561,17 +566,18 @@ class TestCreateId:
 
 class TestCuidWrapper:
     def test_cuid_wrapper_is_callable(self: TestCuidWrapper) -> None:
-        """Tests that the function emits DeprecationWarning and returns a callable."""
-        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated") as record:
-            cuid_func: Callable[[], str] = cuid_wrapper()
-        assert record[0].filename == __file__
+        """Tests that cuid_wrapper() returns a functools.partial bound to create_id."""
+        cuid_func: Callable[[], str] = cuid_wrapper()
         assert callable(cuid_func)
+        assert isinstance(cuid_func, partial)
+        assert cuid_func.func is create_id
+        assert cuid_func.args == ()
+        assert cuid_func.keywords == {"length": DEFAULT_LENGTH}
 
     def test_cuid_wrapper_delegates_to_create_id_lazily(self: TestCuidWrapper, mocker: Mock) -> None:
         """Tests that cuid_wrapper() is lazy at creation time and delegates to create_id()."""
         spy = mocker.spy(cuid2.generator, "create_id")
-        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
-            cuid_func: Callable[[], str] = cuid_wrapper(length=10)
+        cuid_func: Callable[[], str] = cuid_wrapper(length=10)
         assert cuid2.generator._default_generator is None
         assert spy.call_count == 0
         generated: str = cuid_func()
@@ -581,45 +587,51 @@ class TestCuidWrapper:
 
     def test_cuid_wrapper_return_type(self: TestCuidWrapper) -> None:
         """Tests that the function returns a callable that generates a CUID string."""
-        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
-            cuid_func: Callable[[], str] = cuid_wrapper()
+        cuid_func: Callable[[], str] = cuid_wrapper()
         assert isinstance(cuid_func(), str)
 
     def test_cuid_wrapper_no_parameters(self: TestCuidWrapper) -> None:
-        """Tests that the function doesn't accept any parameters."""
-        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
-            cuid_func: Callable[[], str] = cuid_wrapper()
+        """Tests that positional length raises TypeError while keyword override is accepted by partial."""
+        cuid_func: Callable[[], str] = cuid_wrapper()
         with pytest.raises(
             TypeError,
-            match="cuid\\(\\) takes 0 positional arguments but 1 was given",
+            match=r"create_id\(\) got multiple values for argument 'length'",
         ):
             cuid_func(DEFAULT_LENGTH)  # type: ignore[call-arg]
+        overridden: str = cuid_func(length=10)  # type: ignore[call-arg]
+        assert len(overridden) == 10
+        assert is_cuid(overridden) is True
+
+    def test_cuid_wrapper_pickle_round_trip(self: TestCuidWrapper) -> None:
+        """Tests that the returned functools.partial can be pickled and unpickled."""
+        restored = pickle.loads(pickle.dumps(cuid_wrapper(length=10)))  # noqa: S301
+        assert isinstance(restored, partial)
+        assert restored.func is create_id
+        assert restored.keywords == {"length": 10}
+        assert len(restored()) == 10
 
     def test_cuid_wrapper_length(self: TestCuidWrapper) -> None:
         """Tests that the function returns a callable that generates a CUID string with the default length."""
-        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
-            cuid_func: Callable[[], str] = cuid_wrapper()
+        cuid_func: Callable[[], str] = cuid_wrapper()
         assert len(cuid_func()) == DEFAULT_LENGTH
 
     @pytest.mark.parametrize("length", [MIN_LENGTH, 10, BIG_LENGTH])
     def test_cuid_wrapper_custom_length(self: TestCuidWrapper, length: int) -> None:
         """Tests that cuid_wrapper generates a CUID string with a specified length."""
-        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
-            cuid_func: Callable[[], str] = cuid_wrapper(length=length)
+        cuid_func: Callable[[], str] = cuid_wrapper(length=length)
         assert len(cuid_func()) == length
 
     @pytest.mark.parametrize("length", [1, BIG_LENGTH + 1, MAXIMUM_LENGTH])
     def test_cuid_wrapper_deprecated_length(self: TestCuidWrapper, length: int) -> None:
         """Tests that cuid_wrapper emits DeprecationWarning for lengths outside MIN_LENGTH..BIG_LENGTH."""
-        with pytest.warns(
-            DeprecationWarning,
-            match=r"(outside the CUID2 specification range|cuid_wrapper\(\) is deprecated)",
-        ) as record:
+        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
             cuid_func: Callable[[], str] = cuid_wrapper(length=length)
-        assert len(record) == 2
-        assert all(warning.filename == __file__ for warning in record)
-        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range"):
+        assert len(record) == 1
+        assert record[0].filename == __file__
+        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as call_record:
             generated = cuid_func()
+        assert len(call_record) == 1
+        assert call_record[0].filename == __file__
         assert len(generated) <= length
         if length < MAXIMUM_LENGTH - 1:
             assert len(generated) == length
@@ -653,66 +665,345 @@ class TestCli:
         """Tests that the CLI prints a default-length CUID when invoked without arguments."""
         cli_main([])
         output = capsys.readouterr().out.strip()
-        assert len(output) == DEFAULT_LENGTH
-        assert output[0].isalpha()
+        assert is_cuid(output, min_length=DEFAULT_LENGTH, max_length=DEFAULT_LENGTH) is True
 
         monkeypatch.setattr("sys.argv", ["cuid2"])
         cli_main()
         output_default_argv = capsys.readouterr().out.strip()
-        assert len(output_default_argv) == DEFAULT_LENGTH
-        assert output_default_argv[0].isalpha()
+        assert is_cuid(output_default_argv, min_length=DEFAULT_LENGTH, max_length=DEFAULT_LENGTH) is True
 
-    @pytest.mark.parametrize("length", [MIN_LENGTH, 10, BIG_LENGTH])
-    def test_cli_custom_length(self: TestCli, length: int, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_cli_module_execution(
+        self: TestCli,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Tests that running python -m cuid2 invokes the CLI entry point."""
+        monkeypatch.setattr("sys.argv", ["cuid2", "--slug"])
+        runpy.run_module("cuid2", run_name="__main__", alter_sys=True)
+        out = capsys.readouterr().out.strip()
+        assert is_cuid(out, min_length=5, max_length=5) is True
+
+    @pytest.mark.parametrize("flag", ["-h", "--help"])
+    def test_cli_help(self: TestCli, flag: str, capsys: pytest.CaptureFixture[str]) -> None:
+        """Tests that -h and --help print usage and flag documentation to stdout and exit 0."""
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main([flag])
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        for expected in (
+            "usage: cuid2",
+            "24",
+            "2..32",
+            "--slug",
+            "--count",
+            "--fingerprint",
+            "--check",
+            "--quiet",
+        ):
+            assert expected in captured.out
+        assert captured.err == ""
+
+    @pytest.mark.parametrize("flag", ["-V", "-v", "--version"])
+    def test_cli_version(self: TestCli, flag: str, capsys: pytest.CaptureFixture[str]) -> None:
+        """Tests that -V, -v, and --version print the package version to stdout and exit 0."""
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main([flag])
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert captured.out == f"cuid2 {importlib.metadata.version('cuid2')}\n"
+        assert captured.err == ""
+
+    @pytest.mark.parametrize(
+        ("args", "expected_length"),
+        [
+            (["2"], 2),
+            (["10"], 10),
+            (["32"], 32),
+            (["-l", "10"], 10),
+            (["--length", "16"], 16),
+            (["--slug"], 5),
+        ],
+    )
+    def test_cli_custom_length(
+        self: TestCli,
+        args: list[str],
+        expected_length: int,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
         """Tests that the CLI prints a CUID of the requested custom length."""
-        cli_main([str(length)])
+        cli_main(args)
         output = capsys.readouterr().out.strip()
-        assert len(output) == length
-        assert output[0].isalpha()
+        assert is_cuid(output, min_length=expected_length, max_length=expected_length) is True
 
-    @pytest.mark.parametrize("length", [1, MAXIMUM_LENGTH])
-    def test_cli_boundary_lengths(self: TestCli, length: int, capsys: pytest.CaptureFixture[str]) -> None:
+    @pytest.mark.parametrize(
+        ("args", "length"),
+        [
+            (["1"], 1),
+            (["-l", "33"], 33),
+            ([str(MAXIMUM_LENGTH)], MAXIMUM_LENGTH),
+        ],
+    )
+    def test_cli_boundary_lengths(
+        self: TestCli,
+        args: list[str],
+        length: int,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
         """Tests that the CLI emits DeprecationWarning and prints a CUID for deprecated boundary lengths."""
         with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range"):
-            cli_main([str(length)])
+            cli_main(args)
         output = capsys.readouterr().out.strip()
         assert len(output) <= length
-        if length < MAXIMUM_LENGTH - 1:
+        if length <= 50:
             assert len(output) == length
         assert output[0].isalpha()
 
     @pytest.mark.parametrize(
-        ("arg", "expected_match"),
+        ("args", "expected_substring"),
         [
-            ("0", r"Length must be at least 1 character\."),
-            ("-5", r"Length must be at least 1 character\."),
-            (str(MAXIMUM_LENGTH + 1), r"Length must never exceed 98 characters\."),
+            (["0"], "length must be at least 1 character"),
+            (["-5"], "length must be at least 1 character"),
+            (["--", "-5"], "length must be at least 1 character"),
+            (["-l", "-5"], "length must be at least 1 character"),
+            ([str(MAXIMUM_LENGTH + 1)], "length must never exceed 98 characters"),
+            (["-l", "0"], "length must be at least 1 character"),
+            (["--length", str(MAXIMUM_LENGTH + 1)], "length must never exceed 98 characters"),
+            (["invalid"], "invalid int value"),
+            (["-l", "abc"], "invalid int value"),
         ],
     )
-    def test_cli_invalid_lengths(self: TestCli, arg: str, expected_match: str) -> None:
-        """Tests that the CLI rejects lengths <= 0 and > MAXIMUM_LENGTH."""
-        with pytest.raises(ValueError, match=expected_match):
-            cli_main([arg])
+    def test_cli_invalid_lengths(
+        self: TestCli,
+        args: list[str],
+        expected_substring: str,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Tests that the CLI exits with code 2 when given an invalid or out-of-range length."""
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(args)
+        assert exc_info.value.code == 2
+        err = capsys.readouterr().err
+        assert "cuid2: error:" in err
+        assert expected_substring in err
 
-    def test_cli_non_integer_argument(self: TestCli) -> None:
-        """Tests that the CLI exits when given a non-integer argument."""
-        with pytest.raises(SystemExit):
-            cli_main(["invalid"])
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["10", "-l", "12"],
+            ["10", "--slug"],
+            ["-l", "10", "--slug"],
+            ["10", "-l", "12", "--slug"],
+        ],
+    )
+    def test_cli_conflicting_length_arguments(
+        self: TestCli,
+        args: list[str],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Tests that specifying multiple length options exits with code 2."""
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(args)
+        assert exc_info.value.code == 2
+        assert "conflicting length arguments" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("flag", [["-n", "5"], ["-c", "5"], ["--count", "5"]])
+    def test_cli_batch_count(
+        self: TestCli,
+        flag: list[str],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Tests that batch count flags print multiple unique CUIDs and instantiate Cuid once."""
+        cli_main(flag)
+        lines = capsys.readouterr().out.splitlines()
+        assert len(lines) == 5
+        assert len(set(lines)) == 5
+        assert all(is_cuid(item, min_length=DEFAULT_LENGTH, max_length=DEFAULT_LENGTH) is True for item in lines)
+
+        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
+            cli_main(["-l", "33", "-n", "3"])
+        assert len(record) == 1
+        batch_lines = capsys.readouterr().out.splitlines()
+        assert len(batch_lines) == 3
+
+    @pytest.mark.parametrize(
+        ("args", "expected_substring"),
+        [
+            (["-n", "0"], "count must be at least 1"),
+            (["-c", "-2"], "count must be at least 1"),
+            (["--count", "abc"], "invalid int value"),
+        ],
+    )
+    def test_cli_invalid_count(
+        self: TestCli,
+        args: list[str],
+        expected_substring: str,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Tests that invalid count values exit with code 2."""
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(args)
+        assert exc_info.value.code == 2
+        assert expected_substring in capsys.readouterr().err
+
+    def test_cli_custom_fingerprint(
+        self: TestCli,
+        mocker: Mock,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Tests that -f/--fingerprint passes fingerprint_data to create_fingerprint and rejects empty strings."""
+        spy = mocker.spy(cuid2.cli, "create_fingerprint")
+        cli_main(["-f", "host-a", "-n", "2"])
+        lines = capsys.readouterr().out.splitlines()
+        assert len(lines) == 2
+        assert all(is_cuid(item, min_length=DEFAULT_LENGTH, max_length=DEFAULT_LENGTH) is True for item in lines)
+        spy.assert_called_once_with(random_generator=mocker.ANY, fingerprint_data="host-a")
+
+        spy.reset_mock()
+        cli_main(["--fingerprint", "host-b"])
+        single = capsys.readouterr().out.strip()
+        assert is_cuid(single, min_length=DEFAULT_LENGTH, max_length=DEFAULT_LENGTH) is True
+        spy.assert_called_once_with(random_generator=mocker.ANY, fingerprint_data="host-b")
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["-f", ""])
+        assert exc_info.value.code == 2
+        assert "fingerprint must not be empty" in capsys.readouterr().err
+
+    def test_cli_check_direct_argument(self: TestCli, capsys: pytest.CaptureFixture[str]) -> None:
+        """Tests --check and --validate with direct candidate arguments and optional length constraints."""
+        valid_id = create_id()
+        short_id = create_id(length=10)
+        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range"):
+            long_id = create_id(length=40)
+
+        for flag in ("--check", "--validate"):
+            with pytest.raises(SystemExit) as exc_info:
+                cli_main([flag, valid_id])
+            assert exc_info.value.code == 0
+            assert capsys.readouterr().out == f"{valid_id}: valid\n"
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["--check", "NotACuid!"])
+        assert exc_info.value.code == 1
+        assert capsys.readouterr().out == "NotACuid!: invalid\n"
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["--check", ""])
+        assert exc_info.value.code == 1
+        assert capsys.readouterr().out == "<empty>: invalid\n"
+
+        for check_args in (
+            ["--check", short_id, "-l", "10"],
+            ["10", "--check", short_id],
+            ["--slug", "--check", create_id(length=5)],
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                cli_main(check_args)
+            assert exc_info.value.code == 0
+            capsys.readouterr()
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["--check", valid_id, "-l", "10"])
+        assert exc_info.value.code == 1
+        assert capsys.readouterr().out == f"{valid_id}: invalid\n"
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            with pytest.raises(SystemExit) as exc_info:
+                cli_main(["--check", long_id, "-l", "40"])
+            assert exc_info.value.code == 0
+            assert capsys.readouterr().out == f"{long_id}: valid\n"
+
+    def test_cli_check_stdin_and_quiet(
+        self: TestCli,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Tests --check with '-' stdin streams and -q/--quiet suppression."""
+        id1 = create_id()
+        id2 = create_id()
+
+        monkeypatch.setattr("sys.stdin", io.StringIO(f"{id1}\n{id2}\r\n"))
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["--check", "-"])
+        assert exc_info.value.code == 0
+        assert capsys.readouterr().out == f"{id1}: valid\n{id2}: valid\n"
+
+        monkeypatch.setattr("sys.stdin", io.StringIO(f"{id1}\nBAD_ID\n"))
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["--check", "-"])
+        assert exc_info.value.code == 1
+        assert capsys.readouterr().out == f"{id1}: valid\nBAD_ID: invalid\n"
+
+        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["--check", "-"])
+        assert exc_info.value.code == 1
+        assert capsys.readouterr().out == "<empty>: invalid\n"
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["--check", id1, "-q"])
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["--validate", "BAD_ID", "--quiet"])
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["--check", "-", "-q"])
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+    def test_cli_check_invalid_flag_combinations(
+        self: TestCli,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Tests that incompatible flag combinations with --check or -q exit with code 2."""
+        valid_id = create_id()
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["-q"])
+        assert exc_info.value.code == 2
+        assert "argument -q/--quiet: only allowed with --check/--validate" in capsys.readouterr().err
+
+        for bad_args in (["--check", valid_id, "-n", "1"], ["--check", valid_id, "-f", "srv"]):
+            with pytest.raises(SystemExit) as exc_info:
+                cli_main(bad_args)
+            assert exc_info.value.code == 2
+            assert "not allowed with --check/--validate" in capsys.readouterr().err
+
+    def test_cli_broken_pipe(self: TestCli, mocker: Mock) -> None:
+        """Tests that BrokenPipeError on stdout is handled gracefully without raising."""
+        mocker.patch.object(sys.stdout, "write", side_effect=BrokenPipeError)
+        cli_main(["-n", "5"])
 
     def test_cli_does_not_initialize_generator_on_import(
         self: TestCli,
         mocker: Mock,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Tests that importing cuid2.cli does not initialize a CUID generator until main() is called."""
+        """Tests that importing cuid2.cli does not initialize a CUID generator or version metadata until needed."""
         try:
-            spy = mocker.spy(cuid2.generator, "create_id")
+            cuid_spy = mocker.spy(cuid2.generator, "Cuid")
+            version_spy = mocker.spy(importlib.metadata, "version")
             importlib.reload(cuid2.cli)
-            assert spy.call_count == 0
+            assert cuid_spy.call_count == 0
+            assert version_spy.call_count == 0
             assert cuid2.generator._default_generator is None
             assert not hasattr(cuid2.cli, "generate_cuid")
             cuid2.cli.main([])
-            assert spy.call_count == 1
+            assert cuid_spy.call_count == 1
+            assert version_spy.call_count == 0
+            assert cuid2.generator._default_generator is None
             output = capsys.readouterr().out.strip()
             assert len(output) == DEFAULT_LENGTH
         finally:

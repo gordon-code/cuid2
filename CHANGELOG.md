@@ -12,10 +12,16 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 - Python 3.15 support in CI and package classifiers.
 - `Changelog` and `Issues` project URLs in the package metadata.
+- CLI flags `-V`/`-v`/`--version`, `-l`/`--length`, `--slug` (5-character short ID preset), `-n`/`-c`/`--count`, `-f`/`--fingerprint`, and `--check`/`--validate` (with `-` `stdin` and `-q`/`--quiet` support), plus `python -m cuid2` module execution.
 
 ### Changed
 
+- `cuid_wrapper()` is no longer deprecated and now returns `functools.partial(create_id, length=length)`, making it picklable and directly usable as a Django migration `default=` callable (passing an extra positional argument now raises `TypeError: create_id() got multiple values for argument 'length'`, and passing `length=...` by keyword overrides the bound length).
 - Internal: strengthened `ruff`, `mypy`, and `pyright` static checking, enabled `pytest` 9 strict mode and 100% branch coverage enforcement, added `hypothesis` + `atheris` property-based fuzzing and bounded-memory statistical collision testing in CI, added `rumdl` markdown linting/formatting, `zizmor` and `actionlint` workflow linting, `prek.toml` pre-commit hooks, and OpenSSF Scorecard analysis, hardened the release pipeline with SLSA build provenance and PEP 740 PyPI attestations plus `CHANGELOG.md` release notes, extended `codespell` to repository documentation, and removed `pylint` and `tox`.
+
+### Fixed
+
+- CLI out-of-range length (`<= 0` or `> 98`), count (`<= 0`), and empty fingerprint (`""`) arguments now exit with code `2` and an `argparse` usage error on `stderr` instead of an uncaught `ValueError` traceback.
 
 ## [2.1.0] - 2026-10-25
 
