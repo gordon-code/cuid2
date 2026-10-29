@@ -59,7 +59,7 @@ jobs:
         run: uv sync --locked --no-default-groups --group build --group lint --group typing --group test --no-editable
       - name: Run Linting and Type Checking
         env:
-          SKIP: pytest,actionlint,zizmor
+          SKIP: pytest,actionlint,zizmor,no-commit-to-branch
           UV_NO_SYNC: "1"
         run: uv run --no-sync prek run --all-files
       - name: Run Benchmark and Bounded Collision Suite
