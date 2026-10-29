@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from cuid2 import DEFAULT_LENGTH, Cuid
-from cuid2.utils import BASE36_RADIX
+from cuid2 import Cuid
+from cuid2.utils import BASE36_RADIX, DEFAULT_LENGTH
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable

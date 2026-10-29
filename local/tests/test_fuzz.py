@@ -7,18 +7,16 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from cuid2 import (
+from cuid2 import Cuid, create_id, cuid_wrapper, is_cuid, utils
+from cuid2.utils import (
+    ASCII_LOWERCASE,
+    BASE36_ALPHABET,
+    BASE36_RADIX,
     BIG_LENGTH,
     INITIAL_COUNT_MAX,
     MAXIMUM_LENGTH,
     MIN_LENGTH,
-    Cuid,
-    create_id,
-    cuid_wrapper,
-    is_cuid,
-    utils,
 )
-from cuid2.utils import ASCII_LOWERCASE, BASE36_ALPHABET, BASE36_RADIX
 
 if TYPE_CHECKING:
 
