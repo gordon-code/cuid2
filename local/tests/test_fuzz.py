@@ -4,7 +4,7 @@ import random
 from typing import TYPE_CHECKING, Protocol, cast
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from cuid2 import Cuid, create_id, cuid_wrapper, is_cuid, utils
@@ -27,7 +27,6 @@ if TYPE_CHECKING:
         hypothesis: _HypothesisAttr
 
 
-@settings(derandomize=True, database=None, deadline=None, max_examples=100)
 @given(
     candidate=st.text(max_size=150),
     min_length=st.integers(-50, 150),
@@ -43,14 +42,12 @@ def test_fuzz_is_cuid_arbitrary_strings(candidate: str, min_length: int, max_len
     assert is_cuid(candidate, min_length=min_length, max_length=max_length) is expected
 
 
-@settings(derandomize=True, database=None, deadline=None, max_examples=100)
 @given(candidate=st.from_regex(r"\A[a-z][0-9a-z]{1,97}\Z", fullmatch=True))
 def test_fuzz_is_cuid_valid_regex(candidate: str) -> None:
     assert is_cuid(candidate) is True
     assert is_cuid(candidate, min_length=len(candidate), max_length=len(candidate)) is True
 
 
-@settings(derandomize=True, database=None, deadline=None, max_examples=100)
 @given(number=st.integers(min_value=0, max_value=(1 << 512) - 1))
 def test_fuzz_base36_encode_round_trip(number: int) -> None:
     encoded: str = utils.base36_encode(number)
@@ -61,14 +58,12 @@ def test_fuzz_base36_encode_round_trip(number: int) -> None:
     assert int(encoded, BASE36_RADIX) == number
 
 
-@settings(derandomize=True, database=None, deadline=None, max_examples=100)
 @given(number=st.integers(max_value=-1))
 def test_fuzz_base36_encode_negative_raises(number: int) -> None:
     with pytest.raises(ValueError, match=r"Cannot encode negative integers\."):
         utils.base36_encode(number)
 
 
-@settings(derandomize=True, database=None, deadline=None, max_examples=100)
 @given(
     seed=st.integers(0, (1 << 64) - 1),
     entropy_len=st.integers(1, 64),
@@ -108,7 +103,6 @@ def test_fuzz_utils_primitives(
     assert counter() == initial_count + 2
 
 
-@settings(derandomize=True, database=None, deadline=None, max_examples=100)
 @given(
     seed=st.integers(0, (1 << 64) - 1),
     length=st.integers(MIN_LENGTH, BIG_LENGTH),
@@ -134,7 +128,6 @@ def test_fuzz_cuid_spec_lengths(seed: int, length: int) -> None:
     assert is_cuid(uid_wrapped, min_length=length, max_length=length) is True
 
 
-@settings(derandomize=True, database=None, deadline=None, max_examples=100)
 @given(
     deprecated_length=st.one_of(st.just(1), st.integers(BIG_LENGTH + 1, MAXIMUM_LENGTH)),
     invalid_length=st.one_of(
