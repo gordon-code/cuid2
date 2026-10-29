@@ -42,7 +42,7 @@ jobs:
           INCLUDE_HEAVY: ${{ inputs.include_heavy && 'true' || 'false' }}
         run: |
           if [ "${INCLUDE_HEAVY}" = "true" ]; then
-            uv run --no-sync -v pytest --no-cov --runslow --run-heavy local/tests/test_collision.py
+            uv run --no-sync -v pytest --no-cov -m "slow or heavy"
           else
-            uv run --no-sync -v pytest --no-cov --runslow local/tests/test_collision.py
+            uv run --no-sync -v pytest --no-cov -m slow
           fi

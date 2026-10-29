@@ -119,6 +119,8 @@ addopts = [
     "--import-mode=importlib",
     "--cov",
     "--cov-report=term-missing:skip-covered",
+    "-m",
+    "not slow and not heavy",
 ]
 filterwarnings = [
     "error",
