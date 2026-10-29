@@ -34,6 +34,18 @@ And finally create a separate branch to begin work
 git checkout -b my-new-feature
 ```
 
+## Coding Standards and Contribution Requirements
+
+All contributions must meet the following standards (configured in [`pyproject.toml`](pyproject.toml) and [`prek.toml`](prek.toml)):
+
+- **Python compatibility & dependencies:** Code must support Python `>=3.10` (`3.10`–`3.15`) and maintain **zero runtime dependencies**.
+- **Code style & formatting ([PEP 8](https://peps.python.org/pep-0008/) / [`ruff`](https://docs.astral.sh/ruff/)):** Source and test files are formatted with `ruff format` and linted with `ruff check` (`select = ["ALL"]`, 120-character maximum line length, `from __future__ import annotations` in every module, and `isort` import ordering).
+- **Docstrings ([NumPy docstring standard](https://numpydoc.readthedocs.io/en/latest/format.html)):** All public modules, classes, and functions require NumPy-style docstrings (`[tool.ruff.lint.pydocstyle] convention = "numpy"`).
+- **Static typing ([PEP 484](https://peps.python.org/pep-0484/) / [PEP 604](https://peps.python.org/pep-0604/)):** All code must be fully type-annotated and pass `mypy --strict`, `pyright` (`strict = ["src"]`), and 100% public symbol type completeness via `pyright --verifytypes cuid2 --ignoreexternal`.
+- **Testing ([`pytest`](https://docs.pytest.org/)):** Bug fixes and new features must include unit tests in `local/tests/`, and the full test suite must pass without warnings or regressions.
+- **Documentation, spelling, & workflows:** Markdown files must pass [`rumdl`](https://github.com/rvben/rumdl) (`rumdl check` and `rumdl fmt --check`), all repository files must pass [`codespell`](https://github.com/codespell-project/codespell), and GitHub Actions workflow changes must pass [`actionlint`](https://github.com/rhysd/actionlint) and [`zizmor`](https://docs.zizmor.sh/) (`--persona=pedantic`).
+- **Commit messages & licensing:** Commits and pull request titles follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) (`type(scope): description`). By submitting a contribution, you agree to license your work under the project's [MIT License](LICENSE).
+
 ## Preparing your commit
 
 We rely on a number of formatters, linters, and tests to ensure that
