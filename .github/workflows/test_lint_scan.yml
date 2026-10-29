@@ -78,7 +78,7 @@ jobs:
           test "${#CLI_ID}" -eq 24
           (
             cd "$WHEEL_TEST_DIR"
-            "$WHEEL_TEST_DIR/venv/bin/python" -I -m pytest -o cache_dir="$WHEEL_TEST_DIR/.pytest_cache" "$GITHUB_WORKSPACE/local/tests"
+            COVERAGE_FILE="$WHEEL_TEST_DIR/.coverage" "$WHEEL_TEST_DIR/venv/bin/python" -I -m pytest -c "$GITHUB_WORKSPACE/pyproject.toml" --cov-config="$GITHUB_WORKSPACE/pyproject.toml" -o cache_dir="$WHEEL_TEST_DIR/.pytest_cache" "$GITHUB_WORKSPACE/local/tests"
           )
           rm -rf dist "$WHEEL_TEST_DIR"
 

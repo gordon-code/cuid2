@@ -42,7 +42,7 @@ All contributions must meet the following standards (configured in [`pyproject.t
 - **Code style & formatting ([PEP 8](https://peps.python.org/pep-0008/) / [`ruff`](https://docs.astral.sh/ruff/)):** Source and test files are formatted with `ruff format` and linted with `ruff check` (`select = ["ALL"]`, 120-character maximum line length, `from __future__ import annotations` in every module, and `isort` import ordering).
 - **Docstrings ([NumPy docstring standard](https://numpydoc.readthedocs.io/en/latest/format.html)):** All public modules, classes, and functions require NumPy-style docstrings (`[tool.ruff.lint.pydocstyle] convention = "numpy"`).
 - **Static typing ([PEP 484](https://peps.python.org/pep-0484/) / [PEP 604](https://peps.python.org/pep-0604/)):** All code must be fully type-annotated and pass `mypy --strict`, `pyright` (`strict = ["src"]`), and 100% public symbol type completeness via `pyright --verifytypes cuid2 --ignoreexternal`.
-- **Testing ([`pytest`](https://docs.pytest.org/)):** Bug fixes and new features must include unit tests in `local/tests/`, and the full test suite must pass without warnings or regressions.
+- **Testing ([`pytest`](https://docs.pytest.org/) & [`hypothesis`](https://hypothesis.readthedocs.io/)):** Bug fixes and new features must include unit tests (and property-based tests where appropriate) in `local/tests/`, and the full test suite must pass under `pytest` (`strict = true`, `filterwarnings = ["error"]`) with 100% branch coverage on `cuid2` via `pytest-cov` (`fail_under = 100`).
 - **Documentation, spelling, & workflows:** Markdown files must pass [`rumdl`](https://github.com/rvben/rumdl) (`rumdl check` and `rumdl fmt --check`), all repository files must pass [`codespell`](https://github.com/codespell-project/codespell), and GitHub Actions workflow changes must pass [`actionlint`](https://github.com/rhysd/actionlint) and [`zizmor`](https://docs.zizmor.sh/) (`--persona=pedantic`).
 - **Commit messages & licensing:** Commits and pull request titles follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) (`type(scope): description`). By submitting a contribution, you agree to license your work under the project's [MIT License](LICENSE).
 
@@ -61,7 +61,13 @@ uv run prek run --all-files
 
 You can also audit GitHub Actions workflows directly with `uv run zizmor --persona=pedantic .github/workflows`.
 
-To catch any collision regressions, you may also run `uv run pytest --runslow` locally. The test takes approximately 40 minutes.
+To catch collision or distribution regressions locally, you can run the bounded 3M-ID statistical collision suite (~1 minute, with worker pools capped at `os.cpu_count()`):
+
+```bash
+uv run pytest --no-cov --runslow local/tests/test_collision.py
+```
+
+The 100M-ID `@pytest.mark.heavy` cases (`--run-heavy`) are intended for CI via [`.github/workflows/collision.yml`](.github/workflows/collision.yml) rather than developer laptops.
 
 ## Changelog
 

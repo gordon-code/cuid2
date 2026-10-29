@@ -52,10 +52,13 @@ lint = [
     "zizmor==1.31.1; python_version >= '3.11'",
 ]
 test = [
+    "coverage[toml]==7.16.2",
+    "hypothesis==6.168.5; python_version < '3.11'",
+    "hypothesis==6.170.5; python_version >= '3.11'",
     "keepachangelog==2.0.0",
     "pytest==9.1.1",
+    "pytest-cov==7.1.0",
     "pytest-mock==3.16.0",
-    "pytest-sugar==1.1.1",
 ]
 typing = [
     "mypy==2.4.0",
@@ -65,7 +68,7 @@ typing = [
 [tool.codespell]
 check-hidden = ""
 ignore-words-list = "intoto"
-skip = ".cache,.claude,.git,.mypy_cache,.pdm-build,.pytest_cache,.ruff_cache,.rumdl_cache,.venv,__pycache__,build,dist,hack,uv.lock"
+skip = ".cache,.claude,.coverage,.coverage.*,.git,.hypothesis,.mypy_cache,.pdm-build,.pytest_cache,.ruff_cache,.rumdl_cache,.venv,__pycache__,build,dist,hack,uv.lock"
 
 [tool.rumdl]
 cache-dir = "local/.rumdl_cache"
@@ -106,10 +109,41 @@ section-order = ["future", "standard-library", "third-party", "first-party", "lo
 convention = "numpy"
 
 [tool.pytest.ini_options]
-minversion = "8.1"
+minversion = "9.0"
+strict = true
 cache_dir = "local/.pytest_cache"
 python_files = "test_*.py"
+pythonpath = ["."]
 testpaths = ["local/tests"]
+addopts = [
+    "--import-mode=importlib",
+    "--cov",
+    "--cov-report=term-missing:skip-covered",
+]
+filterwarnings = [
+    "error",
+]
+markers = [
+    "slow: mark test as slow to run",
+    "heavy: mark collision test as heavy (>=10M IDs)",
+]
+
+[tool.coverage.run]
+branch = true
+source_pkgs = ["cuid2"]
+
+[tool.coverage.paths]
+source = [
+    "src/cuid2",
+    "*/site-packages/cuid2",
+]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+]
 
 [tool.mypy]
 cache_dir = "local/.mypy_cache"
@@ -118,7 +152,7 @@ exclude = ["^build/", "^dist/", "^hack/"]
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["keepachangelog"]
+module = ["atheris", "keepachangelog"]
 ignore_missing_imports = true
 
 [tool.pyright]
