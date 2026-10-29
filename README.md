@@ -4,6 +4,7 @@
 [![PyPi](https://img.shields.io/pypi/v/cuid2.svg)](https://pypi.org/project/cuid2/)
 [![PyPi](https://img.shields.io/pypi/dm/cuid2.svg)](https://pypi.org/project/cuid2/)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/gordon-code/cuid2/badge)](https://scorecard.dev/viewer/?uri=github.com/gordon-code/cuid2)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16036/badge)](https://www.bestpractices.dev/projects/16036)
 
 CUID2 for Python 3. Next generation GUIDs. Collision-resistant ids optimized for
 horizontal scaling and performance.
