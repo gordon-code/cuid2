@@ -121,7 +121,6 @@ def _build_parser() -> ArgumentParser:
     )
     parser.add_argument(
         "-V",
-        "-v",
         "--version",
         action=_VersionAction,
         nargs=0,

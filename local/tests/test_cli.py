@@ -67,15 +67,24 @@ class TestCli:
             assert expected in captured.out
         assert captured.err == ""
 
-    @pytest.mark.parametrize("flag", ["-V", "-v", "--version"])
+    @pytest.mark.parametrize("flag", ["-V", "--version"])
     def test_cli_version(self: TestCli, flag: str, capsys: pytest.CaptureFixture[str]) -> None:
-        """Tests that -V, -v, and --version print the package version to stdout and exit 0."""
+        """Tests that -V and --version print the package version to stdout and exit 0."""
         with pytest.raises(SystemExit) as exc_info:
             cli_main([flag])
         assert exc_info.value.code == 0
         captured = capsys.readouterr()
         assert captured.out == f"cuid2 {importlib.metadata.version('cuid2')}\n"
         assert captured.err == ""
+
+    def test_cli_lowercase_v_is_not_version(self: TestCli, capsys: pytest.CaptureFixture[str]) -> None:
+        """Tests that -v is not a version alias, leaving it free for a conventional verbose flag."""
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["-v"])
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "unrecognized arguments: -v" in captured.err
 
     @pytest.mark.parametrize(
         ("args", "expected_length"),
