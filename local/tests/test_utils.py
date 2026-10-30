@@ -11,6 +11,7 @@ import pytest
 from cuid2 import utils
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from unittest.mock import Mock
 
 
@@ -370,10 +371,13 @@ class TestCreateCounter:
             _ = counter.count  # type: ignore[attr-defined]
 
     def test_counter_thread_safety_barrier(self: TestCreateCounter) -> None:
-        """Tests that concurrent increments across 8 threads produce a contiguous, duplicate-free sequence."""
+        """Tests that 1,600,000 increments across 8 threads produce a contiguous, duplicate-free sequence.
+
+        An unsynchronized counter on free-threaded Python returns roughly 320,000-380,000 unique values here.
+        """
         counter = utils.create_counter(0)
         num_threads = 8
-        increments_per_thread = 500
+        increments_per_thread = 200_000
         barrier = threading.Barrier(num_threads)
         buckets: list[list[int]] = [[] for _ in range(num_threads)]
 
@@ -420,3 +424,25 @@ class TestCreateCounter:
         combined = [val for bucket in buckets for val in bucket]
         total = num_threads * increments_per_thread
         assert set(combined) == set(range(1, total + 1))
+
+    def test_counter_reentrant_call_on_same_thread_does_not_deadlock(self: TestCreateCounter) -> None:
+        """Tests that the counter re-entered on the same thread (as from a signal handler) completes."""
+        nested: list[int] = []
+        counters: list[Callable[[], int]] = []
+
+        class _ReentrantInt(int):
+            def __add__(self: _ReentrantInt, other: int) -> _ReentrantInt:
+                if not nested:
+                    nested.append(0)
+                    nested[0] = int(counters[0]())
+                return _ReentrantInt(super().__add__(other))
+
+        counters.append(utils.create_counter(_ReentrantInt(0)))
+        outer: list[int] = []
+        thread = threading.Thread(target=lambda: outer.append(int(counters[0]())), daemon=True)
+        thread.start()
+        thread.join(timeout=10)
+
+        assert not thread.is_alive(), "re-entrant counter call deadlocked on the counter lock"
+        assert len(outer) == 1
+        assert nested[0] >= 1

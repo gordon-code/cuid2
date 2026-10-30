@@ -45,7 +45,7 @@ def create_counter(count: int) -> Callable[[], int]:
         the closure function is called, it atomically increments the count variable under a lock and returns its
         new value.
     """
-    lock = threading.Lock()
+    lock = threading.RLock()
 
     def counter() -> int:
         nonlocal count
