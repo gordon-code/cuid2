@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import string
+import threading
+import time
 from typing import TYPE_CHECKING
 
 import pytest
@@ -9,6 +11,7 @@ import pytest
 from cuid2 import utils
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from unittest.mock import Mock
 
 
@@ -366,3 +369,80 @@ class TestCreateCounter:
         counter = utils.create_counter(0)
         with pytest.raises(AttributeError):
             _ = counter.count  # type: ignore[attr-defined]
+
+    def test_counter_thread_safety_barrier(self: TestCreateCounter) -> None:
+        """Tests that 1,600,000 increments across 8 threads produce a contiguous, duplicate-free sequence.
+
+        An unsynchronized counter on free-threaded Python returns roughly 320,000-380,000 unique values here.
+        """
+        counter = utils.create_counter(0)
+        num_threads = 8
+        increments_per_thread = 200_000
+        barrier = threading.Barrier(num_threads)
+        buckets: list[list[int]] = [[] for _ in range(num_threads)]
+
+        def worker(index: int) -> None:
+            barrier.wait()
+            buckets[index] = [counter() for _ in range(increments_per_thread)]
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(num_threads)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        combined = [val for bucket in buckets for val in bucket]
+        total = num_threads * increments_per_thread
+        assert len(combined) == total
+        assert set(combined) == set(range(1, total + 1))
+        assert counter() == total + 1
+
+    def test_counter_thread_safety_forced_interleaving(self: TestCreateCounter) -> None:
+        """Tests that the counter lock prevents lost updates even when addition yields the GIL."""
+
+        class _YieldingInt(int):
+            def __add__(self: _YieldingInt, other: int) -> _YieldingInt:
+                time.sleep(0)
+                return _YieldingInt(super().__add__(other))
+
+        counter = utils.create_counter(_YieldingInt(0))
+        num_threads = 8
+        increments_per_thread = 25
+        barrier = threading.Barrier(num_threads)
+        buckets: list[list[int]] = [[] for _ in range(num_threads)]
+
+        def worker(index: int) -> None:
+            barrier.wait()
+            buckets[index] = [int(counter()) for _ in range(increments_per_thread)]
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(num_threads)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        combined = [val for bucket in buckets for val in bucket]
+        total = num_threads * increments_per_thread
+        assert set(combined) == set(range(1, total + 1))
+
+    def test_counter_reentrant_call_on_same_thread_does_not_deadlock(self: TestCreateCounter) -> None:
+        """Tests that the counter re-entered on the same thread (as from a signal handler) completes."""
+        nested: list[int] = []
+        counters: list[Callable[[], int]] = []
+
+        class _ReentrantInt(int):
+            def __add__(self: _ReentrantInt, other: int) -> _ReentrantInt:
+                if not nested:
+                    nested.append(0)
+                    nested[0] = int(counters[0]())
+                return _ReentrantInt(super().__add__(other))
+
+        counters.append(utils.create_counter(_ReentrantInt(0)))
+        outer: list[int] = []
+        thread = threading.Thread(target=lambda: outer.append(int(counters[0]())), daemon=True)
+        thread.start()
+        thread.join(timeout=10)
+
+        assert not thread.is_alive(), "re-entrant counter call deadlocked on the counter lock"
+        assert len(outer) == 1
+        assert nested[0] >= 1

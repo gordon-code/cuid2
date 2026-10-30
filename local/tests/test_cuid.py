@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import copy
+import multiprocessing
+import os
 import pickle
+import random
+import threading
+import time
 import warnings
 from functools import partial
 from math import floor
@@ -25,6 +31,9 @@ from cuid2 import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from multiprocessing.connection import Connection
+    from multiprocessing.process import BaseProcess
+    from typing import Any
     from unittest.mock import Mock
 
 
@@ -149,10 +158,10 @@ class TestCuid:
         cuid = Cuid()
 
         # Assert that the values are set to their default values
-        assert isinstance(cuid._random, SystemRandom)
-        assert callable(cuid._counter)
+        assert isinstance(cuid._state.random, SystemRandom)
+        assert callable(cuid._state.counter)
         assert cuid._length == DEFAULT_LENGTH
-        assert isinstance(cuid._fingerprint, str)
+        assert isinstance(cuid._state.fingerprint, str)
 
     #  Tests that the random_generator and fingerprint functions are called correctly when mocked.
     def test_mock_random_generator_and_fingerprint(self: TestCuid, mocker: Mock) -> None:
@@ -174,9 +183,9 @@ class TestCuid:
         # Generate a Cuid and assert that the mocked functions were called correctly
         cuid_str = cuid.generate()
         assert cuid_str == "locked_hash"  # first letter is "l" from mocked create_letter function
-        assert cuid._fingerprint == "mocked_fingerprint"
+        assert cuid._state.fingerprint == "mocked_fingerprint"
         assert (
-            cuid._counter() == 238391185
+            cuid._state.counter() == 238391185
         )  # counter is statically assigned since mocked random always returns the same value
 
     #  Tests that generate() returns a string of specified length.
@@ -199,10 +208,10 @@ class TestCuid:
         cuid = Cuid(random_generator=mock_random_class, counter=mock_counter, fingerprint=mock_fingerprint)
 
         # Assert
-        assert cuid._random == mock_random_class()
-        assert cuid._counter == mock_counter(floor(cuid._random.random() * INITIAL_COUNT_MAX))
+        assert cuid._state.random == mock_random_class()
+        assert cuid._state.counter == mock_counter(floor(cuid._state.random.random() * INITIAL_COUNT_MAX))
         assert cuid._length == DEFAULT_LENGTH
-        assert cuid._fingerprint == mock_fingerprint(random_generator=cuid._random)
+        assert cuid._state.fingerprint == mock_fingerprint(random_generator=cuid._state.random)
 
     #  Tests that generate() uses base36 encoding and creates a hash.
     def test_generate_uses_base36_encoding(self: TestCuid, mocker: Mock) -> None:
@@ -226,6 +235,134 @@ class TestCuid:
         assert result.startswith("l")
         assert len(result) == DEFAULT_LENGTH
         assert result == "l9j3ikop1bi8tcvzme3x3yv7"
+
+    def test_generate_thread_safety_custom_random(self: TestCuid) -> None:
+        """Tests that Cuid.generate() serializes calls to a non-reentrant custom random generator across threads."""
+
+        class _NonReentrantRandom(random.Random):
+            def __init__(self: _NonReentrantRandom, seed: int) -> None:
+                super().__init__(seed)
+                self._busy = False
+
+            def random(self: _NonReentrantRandom) -> float:
+                if self._busy:
+                    msg = "Concurrent access to non-reentrant random generator"
+                    raise RuntimeError(msg)
+                self._busy = True
+                try:
+                    time.sleep(0)
+                    return super().random()
+                finally:
+                    self._busy = False
+
+        cuid = Cuid(random_generator=lambda: _NonReentrantRandom(42))
+        num_threads = 8
+        ids_per_thread = 25
+        barrier = threading.Barrier(num_threads)
+        buckets: list[list[str]] = [[] for _ in range(num_threads)]
+        errors: list[BaseException] = []
+
+        def worker(index: int) -> None:
+            try:
+                barrier.wait()
+                buckets[index] = [cuid.generate() for _ in range(ids_per_thread)]
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(num_threads)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert errors == []
+        generated = [cid for bucket in buckets for cid in bucket]
+        assert len(generated) == num_threads * ids_per_thread
+        assert len(set(generated)) == len(generated)
+        assert all(is_cuid(cid) for cid in generated)
+
+    def test_generate_reentrant_call_on_same_thread_does_not_deadlock(self: TestCuid) -> None:
+        """Tests that generate() re-entered on the same thread (as from a signal handler) completes."""
+
+        class _ReentrantRandom(random.Random):
+            def __init__(self: _ReentrantRandom, seed: int) -> None:
+                super().__init__(seed)
+                self.cuid: Cuid | None = None
+                self.entered = False
+                self.nested: list[str] = []
+
+            def random(self: _ReentrantRandom) -> float:
+                if self.cuid is not None and not self.entered:
+                    self.entered = True
+                    self.nested.append(self.cuid.generate())
+                return super().random()
+
+        rng = _ReentrantRandom(1)
+        cuid = Cuid(random_generator=lambda: rng)
+        rng.cuid = cuid
+        outer: list[str] = []
+        thread = threading.Thread(target=lambda: outer.append(cuid.generate()), daemon=True)
+        thread.start()
+        thread.join(timeout=10)
+
+        assert not thread.is_alive(), "re-entrant generate() deadlocked on the instance lock"
+        assert len(outer) == 1
+        assert len(rng.nested) == 1
+        assert is_cuid(outer[0])
+        assert is_cuid(rng.nested[0])
+        assert outer[0] != rng.nested[0]
+
+    def test_deepcopy_returns_independent_generator(self: TestCuid) -> None:
+        """Tests that deepcopy builds fresh state instead of cloning the lock, RNG stream, or counter."""
+        cuid = Cuid(random_generator=random.Random, length=10)
+        clone = copy.deepcopy(cuid)
+
+        assert type(clone) is Cuid
+        assert clone._length == 10
+        assert clone._state.lock is not cuid._state.lock
+        assert clone._state.random is not cuid._state.random
+        assert clone._state.counter is not cuid._state.counter
+        assert len(clone.generate()) == 10
+        assert is_cuid(copy.deepcopy(Cuid()).generate())
+
+        first, second = copy.deepcopy([cuid, cuid])
+        assert first is second
+
+    def test_deepcopy_shares_factories_and_never_clones_their_rng(self: TestCuid) -> None:
+        """Tests that deepcopy shares factory objects, so an RNG held by a factory is reused rather than cloned."""
+
+        class _RngSource:
+            def __init__(self: _RngSource, seed: int) -> None:
+                self.rng = random.Random(seed)  # noqa: S311
+
+            def __call__(self: _RngSource) -> random.Random:
+                return self.rng
+
+        source = _RngSource(7)
+        cuid = Cuid(random_generator=source)
+        clone = copy.deepcopy(cuid)
+
+        assert clone._random_generator is source
+        assert clone._state.random is cuid._state.random
+        assert clone._counter_factory is cuid._counter_factory
+        assert clone._fingerprint_factory is cuid._fingerprint_factory
+
+    def test_deepcopy_preserves_self_references_and_copies_other_attributes(self: TestCuid) -> None:
+        """Tests that deepcopy registers the clone in the memo and deep-copies subclass attributes."""
+
+        class _TaggedCuid(Cuid):
+            def __init__(self: _TaggedCuid) -> None:
+                super().__init__()
+                self.me: _TaggedCuid = self
+                self.tags: list[str] = ["a"]
+
+        cuid = _TaggedCuid()
+        clone = copy.deepcopy(cuid)
+
+        assert type(clone) is _TaggedCuid
+        assert clone.me is clone
+        assert clone.tags == ["a"]
+        assert clone.tags is not cuid.tags
 
 
 class TestIsCuid:
@@ -556,6 +693,59 @@ class TestCreateId:
         with pytest.raises(ValueError, match=expected_match):
             create_id(length=invalid_length)
 
+    def test_create_id_concurrent_first_call_singleton(self: TestCreateId, mocker: Mock) -> None:
+        """Tests that concurrent first-time create_id() calls initialize _default_generator once."""
+        assert cuid2.generator._default_generator is None
+        real_cuid = cuid2.generator.Cuid
+
+        def slow_cuid() -> Cuid:
+            # Widen the race window so every thread reaches the None check while the first is still constructing,
+            # which makes an unsynchronized singleton fail deterministically on GIL and free-threaded builds alike.
+            time.sleep(0.05)
+            return real_cuid()
+
+        spy = mocker.patch.object(cuid2.generator, "Cuid", side_effect=slow_cuid)
+        num_threads = 8
+        ids_per_thread = 25
+        barrier = threading.Barrier(num_threads)
+        buckets: list[list[str]] = [[] for _ in range(num_threads)]
+
+        def worker(index: int) -> None:
+            barrier.wait()
+            buckets[index] = [create_id() for _ in range(ids_per_thread)]
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(num_threads)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert spy.call_count == 1
+        generated = [cid for bucket in buckets for cid in bucket]
+        assert len(generated) == num_threads * ids_per_thread
+        assert len(set(generated)) == len(generated)
+        assert all(is_cuid(cid) for cid in generated)
+
+    def test_create_id_double_checked_locking_inner_branch(
+        self: TestCreateId,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Deterministically exercises the inner 'generator is not None' branch of double-checked locking."""
+        assert cuid2.generator._default_generator is None
+        pre_created = Cuid()
+
+        class _PrepopulatingLock:
+            def __enter__(self: _PrepopulatingLock) -> None:
+                cuid2.generator._default_generator = pre_created
+
+            def __exit__(self: _PrepopulatingLock, *_args: object) -> None:
+                return None
+
+        monkeypatch.setattr(cuid2.generator, "_process_locks", {os.getpid(): _PrepopulatingLock()})
+        generated = create_id()
+        assert is_cuid(generated)
+        assert cuid2.generator._default_generator is pre_created
+
 
 class TestCuidWrapper:
     def test_cuid_wrapper_is_callable(self: TestCuidWrapper) -> None:
@@ -647,3 +837,254 @@ class TestCuidWrapper:
         """Tests that cuid_wrapper raises ValueError when length is out of bounds."""
         with pytest.raises(ValueError, match=expected_match):
             cuid_wrapper(length=invalid_length)
+
+
+def _fork_child_worker(custom_cuid: Cuid, conn: Connection[Any, Any]) -> None:
+    try:
+        default_ids = [create_id() for _ in range(20)]
+        custom_ids = [custom_cuid.generate() for _ in range(20)]
+        default_generator = cuid2.generator._default_generator
+        default_fingerprint = "" if default_generator is None else default_generator._state.fingerprint
+        conn.send((os.getpid(), default_fingerprint, custom_cuid._state.fingerprint, default_ids, custom_ids))
+    finally:
+        conn.close()
+
+
+class TestForkSafety:
+    def test_generate_rebuilds_state_when_pid_changes(self: TestForkSafety, mocker: Mock) -> None:
+        """Tests that generate() replaces the lock, RNG, counter, and fingerprint once per new process ID."""
+        cuid = Cuid()
+        old_state = cuid._state
+        assert old_state.pid == os.getpid()
+
+        mocker.patch("os.getpid", return_value=old_state.pid + 1)
+        assert is_cuid(cuid.generate())
+
+        new_state = cuid._state
+        assert new_state.pid == old_state.pid + 1
+        assert new_state.lock is not old_state.lock
+        assert new_state.random is not old_state.random
+        assert new_state.counter is not old_state.counter
+        assert new_state.fingerprint != old_state.fingerprint
+        assert is_cuid(cuid.generate())
+        assert cuid._state is new_state
+
+    def test_pid_change_reseeds_shared_random_and_tolerates_seedless_rng(
+        self: TestForkSafety,
+        mocker: Mock,
+    ) -> None:
+        """Tests that a reused RNG instance is reseeded after a PID change and that RNGs without .seed() work."""
+        shared_rng = random.Random(999)  # noqa: S311
+        cuid_shared = Cuid(random_generator=lambda: shared_rng)
+        unreseeded_rng = random.Random()  # noqa: S311
+        unreseeded_rng.setstate(shared_rng.getstate())
+        # Draws made by the rebuild (counter + fingerprint entropy) and by one generate() (letter + salt).
+        for _ in range(1 + BIG_LENGTH + 1 + DEFAULT_LENGTH):
+            _ = unreseeded_rng.random()
+        seed_spy = mocker.spy(shared_rng, "seed")
+
+        class _SeedlessRng:
+            def random(self: _SeedlessRng) -> float:
+                return 0.25
+
+        seedless = _SeedlessRng()
+        cuid_seedless = Cuid(random_generator=lambda: seedless)  # type: ignore[arg-type, return-value]
+
+        mocker.patch("os.getpid", return_value=os.getpid() + 1)
+        assert is_cuid(cuid_shared.generate())
+        assert is_cuid(cuid_seedless.generate())
+
+        seed_spy.assert_called_once_with()
+        assert cuid_shared._state.random is shared_rng
+        assert shared_rng.getstate() != unreseeded_rng.getstate()
+        assert cuid_seedless._state.pid == os.getpid()
+        assert cuid_seedless._state.random.random() == 0.25
+
+    def test_rebuild_failure_propagates_without_affecting_other_instances(
+        self: TestForkSafety,
+        mocker: Mock,
+    ) -> None:
+        """Tests that a factory failing in a new process raises from that instance only and is retried later."""
+        parent_pid = os.getpid()
+        fail = {"enabled": True}
+
+        def flaky_fingerprint(random_generator: object) -> str:  # noqa: ARG001
+            if fail["enabled"] and os.getpid() != parent_pid:
+                msg = "fingerprint source unavailable"
+                raise OSError(msg)
+            return "f" * BIG_LENGTH
+
+        flaky = Cuid(fingerprint=flaky_fingerprint)
+        healthy = Cuid()
+        stale_state = flaky._state
+
+        mocker.patch("os.getpid", return_value=parent_pid + 1)
+        with pytest.raises(OSError, match="fingerprint source unavailable"):
+            flaky.generate()
+        assert flaky._state is stale_state
+        assert is_cuid(healthy.generate())
+        assert healthy._state.pid == parent_pid + 1
+
+        fail["enabled"] = False
+        assert is_cuid(flaky.generate())
+        assert flaky._state.pid == parent_pid + 1
+
+    def test_pid_change_never_acquires_inherited_locks(
+        self: TestForkSafety,
+        monkeypatch: pytest.MonkeyPatch,
+        mocker: Mock,
+    ) -> None:
+        """Tests that a new process never waits on instance or default-generator locks held at fork time."""
+        monkeypatch.setattr(cuid2.generator, "_default_generator", None)
+        cuid = Cuid()
+        inherited_instance_lock = cuid._state.lock
+        inherited_process_lock = cuid2.generator._process_lock(os.getpid())
+        child_pid = os.getpid() + 1
+        holding = threading.Event()
+        release = threading.Event()
+
+        def hold_locks() -> None:
+            with inherited_instance_lock, inherited_process_lock:
+                holding.set()
+                release.wait()
+
+        holder = threading.Thread(target=hold_locks, daemon=True)
+        holder.start()
+        assert holding.wait(timeout=10)
+        generated: list[str] = []
+        try:
+            mocker.patch("os.getpid", return_value=child_pid)
+            worker = threading.Thread(target=lambda: generated.extend([cuid.generate(), create_id()]), daemon=True)
+            worker.start()
+            worker.join(timeout=10)
+            assert not worker.is_alive(), "generate()/create_id() blocked on a lock held at fork time"
+        finally:
+            release.set()
+            holder.join(timeout=10)
+
+        assert len(generated) == 2
+        assert all(is_cuid(cid) for cid in generated)
+        assert cuid._state.lock is not inherited_instance_lock
+        assert cuid2.generator._process_locks[child_pid] is not inherited_process_lock
+
+    def test_child_threads_rebuild_state_and_default_generator_once(
+        self: TestForkSafety,
+        monkeypatch: pytest.MonkeyPatch,
+        mocker: Mock,
+    ) -> None:
+        """Tests that threads racing the first calls after a PID change rebuild each instance and the default once."""
+        monkeypatch.setattr(cuid2.generator, "_default_generator", None)
+        factory = mocker.Mock(side_effect=random.Random)
+        cuid = Cuid(random_generator=factory)
+        real_cuid = cuid2.generator.Cuid
+        default_constructor = mocker.patch.object(cuid2.generator, "Cuid", side_effect=real_cuid)
+        mocker.patch("os.getpid", return_value=os.getpid() + 1)
+        num_threads = 8
+        barrier = threading.Barrier(num_threads)
+        locks: list[object] = []
+
+        def worker() -> None:
+            barrier.wait()
+            cuid.generate()
+            create_id()
+            locks.append(cuid._state.lock)
+
+        threads = [threading.Thread(target=worker) for _ in range(num_threads)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert factory.call_count == 2  # construction plus exactly one rebuild for the new process
+        assert default_constructor.call_count == 1
+        assert len({id(lock) for lock in locks}) == 1
+
+    def test_rebuild_skipped_when_another_thread_already_rebuilt(
+        self: TestForkSafety,
+        monkeypatch: pytest.MonkeyPatch,
+        mocker: Mock,
+    ) -> None:
+        """Deterministically exercises the re-check that skips a rebuild finished by another thread."""
+        cuid = Cuid()
+        child_pid = os.getpid() + 1
+        rebuilt_elsewhere = cuid._state._replace(pid=child_pid)
+
+        class _RebuildingLock:
+            def __enter__(self: _RebuildingLock) -> None:
+                cuid._state = rebuilt_elsewhere
+
+            def __exit__(self: _RebuildingLock, *_args: object) -> None:
+                return None
+
+        monkeypatch.setattr(cuid2.generator, "_process_locks", {child_pid: _RebuildingLock()})
+        mocker.patch("os.getpid", return_value=child_pid)
+        assert is_cuid(cuid.generate())
+        assert cuid._state is rebuilt_elsewhere
+
+    @pytest.mark.skipif(
+        "fork" not in multiprocessing.get_all_start_methods(),
+        reason="POSIX fork start method required",
+    )
+    @pytest.mark.filterwarnings("ignore:This process .* is multi-threaded:DeprecationWarning")
+    def test_posix_fork_children_reinitialize_despite_held_locks(
+        self: TestForkSafety,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Tests that forked children never block on inherited held locks and get independent RNG streams."""
+        monkeypatch.setattr(cuid2.generator, "_default_generator", None)
+        shared_rng = random.Random(12345)  # noqa: S311
+        custom_cuid = Cuid(random_generator=lambda: shared_rng)
+        parent_fingerprint = custom_cuid._state.fingerprint
+        inherited_process_lock = cuid2.generator._process_lock(os.getpid())
+        holding = threading.Event()
+        release = threading.Event()
+
+        def hold_locks() -> None:
+            with custom_cuid._state.lock, inherited_process_lock:
+                holding.set()
+                release.wait()
+
+        holder = threading.Thread(target=hold_locks, daemon=True)
+        holder.start()
+        assert holding.wait(timeout=10)
+
+        ctx = multiprocessing.get_context("fork")
+        parent_conns: list[Connection[Any, Any]] = []
+        procs: list[BaseProcess] = []
+        results: list[tuple[int, str, str, list[str], list[str]]] = []
+        try:
+            for _ in range(2):
+                parent_conn, child_conn = ctx.Pipe(duplex=False)
+                proc: BaseProcess = ctx.Process(target=_fork_child_worker, args=(custom_cuid, child_conn))
+                proc.start()
+                child_conn.close()
+                parent_conns.append(parent_conn)
+                procs.append(proc)
+            for conn in parent_conns:
+                assert conn.poll(10), "forked child did not respond; it may be blocked on an inherited lock"
+                results.append(conn.recv())
+        finally:
+            release.set()
+            holder.join(timeout=10)
+            for conn in parent_conns:
+                conn.close()
+            for proc in procs:
+                proc.join(timeout=10)
+                if proc.is_alive():
+                    proc.kill()
+                    proc.join()
+
+        assert [proc.exitcode for proc in procs] == [0, 0]
+        (
+            (pid_a, default_fp_a, custom_fp_a, default_a, custom_a),
+            (pid_b, default_fp_b, custom_fp_b, default_b, custom_b),
+        ) = results
+        assert os.getpid() not in {pid_a, pid_b}
+        assert pid_a != pid_b
+        assert parent_fingerprint not in {custom_fp_a, custom_fp_b}
+        assert custom_fp_a != custom_fp_b
+        assert default_fp_a != default_fp_b
+        # The leading letter comes from the RNG alone; without a reseed both children replay shared_rng's stream.
+        assert [cid[0] for cid in custom_a] != [cid[0] for cid in custom_b]
+        assert set(default_a).isdisjoint(default_b)
+        assert set(custom_a).isdisjoint(custom_b)

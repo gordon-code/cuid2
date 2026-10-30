@@ -17,7 +17,7 @@ by [Parallel Drive](https://github.com/paralleldrive) to Python 3.
 
 ## What is CUID2?
 
-* Secure: It's not possible to guess the next ID.
+* Secure: It's not feasible to guess the next ID (unguessability derives from the `secrets.SystemRandom` CSPRNG salt; per [RFC 9562 §8](https://www.rfc-editor.org/rfc/rfc9562.html#section-8), IDs are identifiers, not capability tokens or secrets).
 * Collision resistant: It's extremely unlikely to generate the same ID twice.
 * Horizontally scalable: Generate IDs on multiple machines without coordination.
 * Offline-compatible: Generate IDs without a network connection.
@@ -41,7 +41,7 @@ For more information on the improvements of CUID2 over CUID, see the
   * **123.6-Bit Default Keyspace (`length=24`)**: 1 leading lowercase letter ($26$) followed by 23 base36 characters ($36^{23}$) yields $26 \times 36^{23} \approx \mathbf{1.61 \times 10^{37}}$ possible IDs ($\approx \mathbf{123.6\text{ bits}}$ of entropy)—slightly more than UUIDv4's 122 random bits in a 33% shorter string (24 vs. 36 chars). Reaching a 50% birthday-bound collision probability requires $\sqrt{2 \ln(2) \times 26 \times 36^{23}} \approx \mathbf{4.7 \times 10^{18}}$ IDs (generating **149 million IDs/sec continuously for 1,000 years**).
   * **Up to 165.0 Bits (`BIG_LENGTH = 32`)**: At `length=32`, the keyspace expands to $26 \times 36^{31} \approx \mathbf{4.54 \times 10^{49}}$ IDs ($\approx \mathbf{165.0\text{ bits}}$; 50% collision bound at $\approx 7.9 \times 10^{24}$ IDs).
   * **Histogram De-Biasing**: Because $2^{512} \approx 1.34 \times 10^{154}$ is not an exact power of 36, the most-significant base36 digit of a 512-bit SHA3-512 digest is biased toward low digits; CUID2 drops that leading hash character (`[1:]`) and prepends an independent uniform `[a-z]` letter so every character position has a uniform distribution.
-* **Pre-Fork & Container Snapshot Resilience**: Combining `os.getpid()`, `socket.gethostname()`, environment variable keys, `time.time_ns()`, a randomly initialized monotonic counter (`INITIAL_COUNT_MAX = 476,782,367`, giving $\approx 25,700$ concurrent hosts before a 50% chance of two hosts even starting at the same counter value), and `secrets.SystemRandom` (`os.urandom`) provides defense-in-depth against PRNG or counter state collisions across forked worker processes (Gunicorn, uWSGI, Celery) and cloned VM/container snapshots.
+* **Thread, Pre-Fork, & Container Snapshot Resilience**: `Cuid`, `create_id`, `cuid_wrapper`, and `create_counter` are thread-safe (including on free-threaded Python, tested on `3.14t` and `3.15t`). Each generator records the process ID (`os.getpid()`) that built its state; the first ID generated in a forked child process (`multiprocessing`, Gunicorn, Celery prefork, and uWSGI workers, including uWSGI's default mode, which skips Python's `os.register_at_fork` hooks) rebuilds that state with a fresh lock, RNG state, random initial counter (`INITIAL_COUNT_MAX = 476,782,367`, giving $\approx 25,700$ concurrent hosts before a 50% chance of two hosts starting at the same counter value), and child-PID fingerprints (`os.getpid()`, `socket.gethostname()`, and environment variable keys). For cloned VM/container snapshots where no `fork()` syscall occurs, per-call `secrets.SystemRandom` (`os.urandom`) salt and `time.time_ns()` provide defense-in-depth against state collisions.
 * **Polyglot ORM Compatibility (Prisma & Drizzle)**: Generates 24-character base36 primary keys compatible with TypeScript/Node.js services using Prisma (`@default(cuid(2))` / `@onCreate(cuid(2))`) or Drizzle (`@paralleldrive/cuid2`), and replaces the deprecated CUIDv1 (`cuid`) format.
 
 | Property | CUID2 (`cuid2`) | UUIDv7 (`uuid.uuid7`) | UUIDv4 (`uuid.uuid4`) | ULID (`python-ulid`) | NanoID (`nanoid`) |
@@ -53,7 +53,7 @@ For more information on the improvements of CUID2 over CUID, see the
 | **Entropy / Random Bits** | **~123.6 bits** (`165.0` at 32) | 74 bits / ms | 122 bits | 80 bits / ms | 126 bits |
 | **50% Collision Bound** | **~4.7 × 10¹⁸** (`~7.9 × 10²⁴` at 32) | ~1.6 × 10¹¹ / ms | ~2.7 × 10¹⁸ | ~1.3 × 10¹² / ms | ~1.1 × 10¹⁹ |
 | **Hides Creation Timestamp?** | **Yes (SHA3-512)** | No (leaks 48-bit ms) | **Yes** | No (leaks 48-bit ms) | **Yes** |
-| **Fork / Snapshot Safe?** | **Yes (PID + host + CSPRNG)** | Counter can collide | OS CSPRNG only | Counter can collide | OS CSPRNG only |
+| **Fork / Snapshot Safe?** | **Yes (per-PID state + CSPRNG)** | Counter can collide | OS CSPRNG only | Counter can collide | OS CSPRNG only |
 | **B-Tree Index Locality** | Low (uniform hash) | **High (time-ordered)** | Low (uniform random) | **High (time-ordered)** | Low (uniform random) |
 
 > **When to choose UUIDv7 instead:** Because CUID2 hashes its inputs via SHA3-512, IDs are uniformly distributed across the key space. For write-heavy relational tables where B-tree insert locality and 16-byte binary `UUID` storage matter more than hiding creation timestamps, prefer Python 3.14's `uuid.uuid7()` or PostgreSQL 18's `uuidv7()`.

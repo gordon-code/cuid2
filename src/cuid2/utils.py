@@ -5,11 +5,12 @@ from __future__ import annotations
 import os
 import socket
 import string
+import threading
 from hashlib import sha3_512
 from math import floor
 from typing import TYPE_CHECKING, Final
 
-# ~22k hosts before 50% chance of initial counter collision
+# ~25.7k hosts before 50% chance of initial counter collision
 # with a remaining counter range of 9.0e+15 in JavaScript.
 INITIAL_COUNT_MAX: Final[int] = 476782367
 MIN_LENGTH: Final[int] = 2
@@ -29,7 +30,7 @@ if TYPE_CHECKING:
 
 
 def create_counter(count: int) -> Callable[[], int]:
-    """Create a counter that returns an incremented value each time it is called.
+    """Create a thread-safe counter that returns an incremented value each time it is called.
 
     Parameters
     ----------
@@ -41,13 +42,16 @@ def create_counter(count: int) -> Callable[[], int]:
     Callable[[], int]
         Closure function `counter` that takes no arguments and returns an integer. The closure function keeps track
         of a count variable that is initialized with the value passed as an argument to `create_counter`. Each time
-        the closure function is called, it increments the count variable and returns its new value.
+        the closure function is called, it atomically increments the count variable under a lock and returns its
+        new value.
     """
+    lock = threading.RLock()
 
     def counter() -> int:
         nonlocal count
-        count += 1
-        return count
+        with lock:
+            count += 1
+            return count
 
     return counter
 

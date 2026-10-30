@@ -10,7 +10,7 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 ### Added
 
-- Python 3.15 support in CI and package classifiers.
+- Python 3.15 and free-threaded Python 3.14t and 3.15t support in CI and package classifiers (`Programming Language :: Python :: Free Threading :: 3 - Stable`).
 - `Changelog` and `Issues` project URLs in the package metadata.
 - CLI flags `-V`/`--version`, `-l`/`--length`, `--slug` (5-character short ID preset), `-n`/`-c`/`--count`, `-f`/`--fingerprint` (used verbatim as the fingerprint, as in `@paralleldrive/cuid2`), and `--check`/`--validate` (with `-` `stdin`, skipping blank lines, and `-q`/`--quiet` support), plus `python -m cuid2` module execution. A count below `1` or an empty fingerprint exits with code `2`.
 
@@ -22,6 +22,8 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 ### Fixed
 
 - CLI out-of-range lengths (`<= 0` or `> 98`) now exit with code `2` and an `argparse` usage error on `stderr` instead of an uncaught `ValueError` traceback.
+- `Cuid`, `create_id()`, `cuid_wrapper()`, and `utils.create_counter()` are now thread-safe (synchronizing counter increments, lazy singleton initialization, and per-instance stateful draws across threads, including free-threaded Python, where unsynchronized counters returned roughly 323,000–380,000 unique values from 1,600,000 calls on 8 threads, with re-entrant locks so a signal handler or finalizer that generates an ID cannot deadlock) and fork-safe (the first ID generated in a forked child process, including uWSGI workers that skip Python's fork hooks, rebuilds the lock, RNG state, counter, and child-PID fingerprint once, even when several child threads race; fixed-seed `random_generator` factories still give every child the same stream).
+- `copy.deepcopy()` of a `Cuid` now returns an independent generator that shares the factories and builds fresh RNG state, counter, and fingerprint, instead of raising `NotImplementedError` for the default `SystemRandom` or cloning a seeded generator's stream and sharing its counter.
 
 ## [2.1.0] - 2026-10-25
 
