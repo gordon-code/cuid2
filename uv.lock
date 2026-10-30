@@ -513,7 +513,7 @@ wheels = [
 
 [[package]]
 name = "cuid2"
-version = "2.1.0"
+version = "2.2.0"
 source = { editable = "." }
 default-groups = ["build", "lint", "test", "typing"]
 
