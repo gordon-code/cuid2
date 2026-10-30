@@ -12,6 +12,7 @@ import pytest
 
 import cuid2.cli
 import cuid2.generator
+import cuid2.utils
 from cuid2 import DEFAULT_LENGTH, MAXIMUM_LENGTH, create_id, is_cuid
 from cuid2.cli import main as cli_main
 
@@ -213,19 +214,21 @@ class TestCli:
         mocker: Mock,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Tests that -f/--fingerprint passes fingerprint_data to create_fingerprint and rejects empty strings."""
-        spy = mocker.spy(cuid2.cli, "create_fingerprint")
+        """Tests that -f/--fingerprint is hashed verbatim (like upstream) and rejects empty strings."""
+        hash_spy = mocker.spy(cuid2.utils, "create_hash")
         cli_main(["-f", "host-a", "-n", "2"])
         lines = capsys.readouterr().out.splitlines()
         assert len(lines) == 2
         assert all(is_cuid(item, min_length=DEFAULT_LENGTH, max_length=DEFAULT_LENGTH) is True for item in lines)
-        spy.assert_called_once_with(random_generator=mocker.ANY, fingerprint_data="host-a")
+        assert hash_spy.call_count == 2
+        assert all(call.args[0].endswith("host-a") for call in hash_spy.call_args_list)
 
-        spy.reset_mock()
+        hash_spy.reset_mock()
         cli_main(["--fingerprint", "host-b"])
         single = capsys.readouterr().out.strip()
         assert is_cuid(single, min_length=DEFAULT_LENGTH, max_length=DEFAULT_LENGTH) is True
-        spy.assert_called_once_with(random_generator=mocker.ANY, fingerprint_data="host-b")
+        hash_spy.assert_called_once()
+        assert hash_spy.call_args.args[0].endswith("host-b")
 
         with pytest.raises(SystemExit) as exc_info:
             cli_main(["-f", ""])
@@ -254,6 +257,12 @@ class TestCli:
             cli_main(["--check", ""])
         assert exc_info.value.code == 1
         assert capsys.readouterr().out == "<empty>: invalid\n"
+
+        for raw, escaped in (("a\x1b[31m\rX", "a\\x1b[31m\\rX"), ("é", "\\xe9")):
+            with pytest.raises(SystemExit) as exc_info:
+                cli_main(["--check", raw])
+            assert exc_info.value.code == 1
+            assert capsys.readouterr().out == f"{escaped}: invalid\n"
 
         for check_args in (
             ["--check", short_id, "-l", "10"],
@@ -298,11 +307,18 @@ class TestCli:
         assert exc_info.value.code == 1
         assert capsys.readouterr().out == f"{id1}: valid\nBAD_ID: invalid\n"
 
-        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        monkeypatch.setattr("sys.stdin", io.StringIO(f"\n{id1}\n\r\n{id2}\n\n"))
         with pytest.raises(SystemExit) as exc_info:
             cli_main(["--check", "-"])
-        assert exc_info.value.code == 1
-        assert capsys.readouterr().out == "<empty>: invalid\n"
+        assert exc_info.value.code == 0
+        assert capsys.readouterr().out == f"{id1}: valid\n{id2}: valid\n"
+
+        for empty_stdin in ("", "\n\r\n"):
+            monkeypatch.setattr("sys.stdin", io.StringIO(empty_stdin))
+            with pytest.raises(SystemExit) as exc_info:
+                cli_main(["--check", "-"])
+            assert exc_info.value.code == 1
+            assert capsys.readouterr().out == "<empty>: invalid\n"
 
         with pytest.raises(SystemExit) as exc_info:
             cli_main(["--check", id1, "-q"])
@@ -344,6 +360,12 @@ class TestCli:
             assert exc_info.value.code == 2
             assert "not allowed with --check/--validate" in capsys.readouterr().err
 
+        for length_args in (["-l", "1"], ["1"]):
+            with pytest.raises(SystemExit) as exc_info:
+                cli_main(["--check", "a", *length_args])
+            assert exc_info.value.code == 2
+            assert "argument --check/--validate: length must be at least 2 characters" in capsys.readouterr().err
+
     def test_cli_broken_pipe(
         self: TestCli,
         monkeypatch: pytest.MonkeyPatch,
@@ -352,8 +374,10 @@ class TestCli:
         """Tests that BrokenPipeError on stdout redirects stdout fd to devnull when available."""
         fake_stdout = io.StringIO()
         monkeypatch.setattr("sys.stdout", fake_stdout)
-        mocker.patch.object(fake_stdout, "write", side_effect=BrokenPipeError)
+        write_mock = mocker.patch.object(fake_stdout, "write", side_effect=BrokenPipeError)
         cli_main(["-n", "5"])
+        write_mock.assert_called_once()
+        assert fake_stdout.getvalue() == ""
 
         mocker.patch.object(fake_stdout, "fileno", return_value=1)
         open_mock = mocker.patch("os.open", return_value=99)
@@ -363,6 +387,20 @@ class TestCli:
         open_mock.assert_called_once_with(os.devnull, os.O_WRONLY)
         dup2_mock.assert_called_once_with(99, 1)
         close_mock.assert_called_once_with(99)
+
+    def test_cli_check_broken_pipe_is_not_success(
+        self: TestCli,
+        monkeypatch: pytest.MonkeyPatch,
+        mocker: Mock,
+    ) -> None:
+        """Tests that --check exits 1 when stdout closes before every candidate is validated."""
+        fake_stdout = io.StringIO()
+        monkeypatch.setattr("sys.stdout", fake_stdout)
+        mocker.patch.object(fake_stdout, "write", side_effect=BrokenPipeError)
+        monkeypatch.setattr("sys.stdin", io.StringIO(f"{create_id()}\n{create_id()}\n"))
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["--check", "-"])
+        assert exc_info.value.code == 1
 
     def test_cli_does_not_initialize_generator_on_import(
         self: TestCli,

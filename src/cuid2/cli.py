@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import os
 import sys
-from argparse import Action, ArgumentParser, ArgumentTypeError, RawDescriptionHelpFormatter
+from argparse import SUPPRESS, Action, ArgumentParser, ArgumentTypeError, RawDescriptionHelpFormatter
 from contextlib import suppress
 from functools import partial
 from typing import TYPE_CHECKING
 
 from cuid2.generator import Cuid, is_cuid
-from cuid2.utils import BIG_LENGTH, DEFAULT_LENGTH, MAXIMUM_LENGTH, MIN_LENGTH, create_fingerprint
+from cuid2.utils import BIG_LENGTH, DEFAULT_LENGTH, MAXIMUM_LENGTH, MIN_LENGTH
 
 __all__ = ["main"]
 
 if TYPE_CHECKING:
+    from _random import Random
     from argparse import Namespace
     from collections.abc import Iterable, Iterator, Sequence
 
@@ -86,6 +87,12 @@ def _parse_fingerprint(raw: str) -> str:
     return raw
 
 
+def _fixed_fingerprint(random_generator: Random, *, fingerprint: str) -> str:
+    # Matches @paralleldrive/cuid2 `init({ fingerprint })`, which hashes the string as-is.
+    del random_generator
+    return fingerprint
+
+
 def _build_parser() -> ArgumentParser:
     parser = ArgumentParser(
         prog="cuid2",
@@ -118,7 +125,7 @@ def _build_parser() -> ArgumentParser:
         "--version",
         action=_VersionAction,
         nargs=0,
-        default="==SUPPRESS==",
+        default=SUPPRESS,
         help="Show program's version number and exit.",
     )
     parser.add_argument(
@@ -152,7 +159,7 @@ def _build_parser() -> ArgumentParser:
         metavar="FINGERPRINT",
         type=_parse_fingerprint,
         default=None,
-        help="Custom host/process fingerprint seed string.",
+        help="Custom fingerprint used verbatim in place of the host fingerprint (IDs remain random).",
     )
     parser.add_argument(
         "--check",
@@ -182,11 +189,13 @@ def _resolve_length(parser: ArgumentParser, cli_args: Namespace) -> int | None:
     return sources[0] if sources else None
 
 
-def _validate_mode_flags(parser: ArgumentParser, cli_args: Namespace) -> None:
+def _validate_mode_flags(parser: ArgumentParser, cli_args: Namespace, target_length: int | None) -> None:
     if cli_args.check is None and cli_args.quiet:
         parser.error("argument -q/--quiet: only allowed with --check/--validate")
     if cli_args.check is not None and (cli_args.count is not None or cli_args.fingerprint is not None):
         parser.error("arguments -n/-c/--count and -f/--fingerprint are not allowed with --check/--validate")
+    if cli_args.check is not None and target_length is not None and target_length < MIN_LENGTH:
+        parser.error(f"argument --check/--validate: length must be at least {MIN_LENGTH} characters")
 
 
 def _iter_candidates(check_arg: str) -> Iterator[str]:
@@ -195,8 +204,10 @@ def _iter_candidates(check_arg: str) -> Iterator[str]:
         return
     empty = True
     for line in sys.stdin:
-        empty = False
-        yield line.rstrip("\r\n")
+        candidate = line.rstrip("\r\n")
+        if candidate:
+            empty = False
+            yield candidate
     if empty:
         yield ""
 
@@ -205,17 +216,22 @@ def _run_check(check_arg: str, target_length: int | None, *, quiet: bool) -> int
     min_len = target_length if target_length is not None else MIN_LENGTH
     max_len = target_length if target_length is not None else MAXIMUM_LENGTH
     all_valid = True
+    exhausted = False
 
     def _evaluate() -> Iterator[str]:
-        nonlocal all_valid
+        nonlocal all_valid, exhausted
         for candidate in _iter_candidates(check_arg):
             valid = is_cuid(candidate, min_length=min_len, max_length=max_len)
             all_valid = all_valid and valid
             if not quiet:
-                yield f"{candidate or '<empty>'}: {'valid' if valid else 'invalid'}\n"
+                # ascii() escapes control and non-ASCII characters from untrusted input.
+                label = ascii(candidate)[1:-1] if candidate else "<empty>"
+                yield f"{label}: {'valid' if valid else 'invalid'}\n"
+        exhausted = True
 
     _write_lines(_evaluate())
-    return 0 if all_valid else 1
+    # A closed stdout stops evaluation early; unchecked candidates must not count as valid.
+    return 0 if all_valid and exhausted else 1
 
 
 def main(args: Sequence[str] | None = None) -> None:
@@ -236,7 +252,7 @@ def main(args: Sequence[str] | None = None) -> None:
     parser = _build_parser()
     cli_args = parser.parse_args(args)
     target_length = _resolve_length(parser, cli_args)
-    _validate_mode_flags(parser, cli_args)
+    _validate_mode_flags(parser, cli_args, target_length)
 
     if cli_args.check is not None:
         exit_code = _run_check(cli_args.check, target_length, quiet=cli_args.quiet)
@@ -249,7 +265,7 @@ def main(args: Sequence[str] | None = None) -> None:
         if cli_args.fingerprint is None
         else Cuid(
             length=resolved_length,
-            fingerprint=partial(create_fingerprint, fingerprint_data=cli_args.fingerprint),
+            fingerprint=partial(_fixed_fingerprint, fingerprint=cli_args.fingerprint),
         )
     )
     _write_lines(f"{cuid_generator.generate()}\n" for _ in range(count))

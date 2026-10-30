@@ -86,9 +86,9 @@ cuid2                        # Generate a 24-character CUID2
 cuid2 -l 10                  # Generate a 10-character CUID2 (or positional: cuid2 10)
 cuid2 --slug                 # Generate a 5-character short ID slug
 cuid2 -n 5                   # Generate 5 CUID2s in a batch
-cuid2 -f server-1            # Generate with a custom host fingerprint
+cuid2 -f server-1            # Use "server-1" verbatim as the fingerprint (IDs stay random)
 cuid2 --check <id>           # Validate an ID (prints "<id>: valid" or "<id>: invalid"; -q for exit code only)
-cuid2 -n 5 | cuid2 --check - # Validate newline-delimited IDs from stdin
+cuid2 -n 5 | cuid2 --check - # Validate newline-delimited IDs from stdin (blank lines are skipped)
 python -m cuid2              # Run via module execution
 ```
 
