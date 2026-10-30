@@ -121,8 +121,7 @@ def test_fuzz_cuid_spec_lengths(seed: int, length: int) -> None:
     assert len(uid_default) == length
     assert is_cuid(uid_default, min_length=length, max_length=length) is True
 
-    with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
-        wrapper = cuid_wrapper(length=length)
+    wrapper = cuid_wrapper(length=length)
     uid_wrapped: str = wrapper()
     assert len(uid_wrapped) == length
     assert is_cuid(uid_wrapped, min_length=length, max_length=length) is True

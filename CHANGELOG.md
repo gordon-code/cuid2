@@ -12,10 +12,16 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 - Python 3.15 support in CI and package classifiers.
 - `Changelog` and `Issues` project URLs in the package metadata.
+- CLI flags `-V`/`--version`, `-l`/`--length`, `--slug` (5-character short ID preset), `-n`/`-c`/`--count`, `-f`/`--fingerprint` (used verbatim as the fingerprint, as in `@paralleldrive/cuid2`), and `--check`/`--validate` (with `-` `stdin`, skipping blank lines, and `-q`/`--quiet` support), plus `python -m cuid2` module execution. A count below `1` or an empty fingerprint exits with code `2`.
 
 ### Changed
 
-- Internal: strengthened `ruff`, `mypy`, and `pyright` static checking, enabled `pytest` 9 strict mode and 100% branch coverage enforcement, added `hypothesis` + `atheris` property-based fuzzing and bounded-memory statistical collision testing in CI, added `rumdl` markdown linting/formatting, `zizmor` and `actionlint` workflow linting, `prek.toml` pre-commit hooks, and OpenSSF Scorecard analysis, hardened the release pipeline with SLSA build provenance and PEP 740 PyPI attestations plus `CHANGELOG.md` release notes, extended `codespell` to repository documentation, and removed `pylint` and `tox`.
+- `cuid_wrapper()` is no longer deprecated and now returns `functools.partial(create_id, length=length)`, making it picklable and directly usable as a Django migration `default=` callable (passing an extra positional argument now raises `TypeError: create_id() got multiple values for argument 'length'`, and passing `length=...` by keyword overrides the bound length).
+- Internal: strengthened `ruff`, `mypy`, and `pyright` static checking, enabled `pytest` 9 strict mode and 100% branch coverage enforcement, added `hypothesis` + `atheris` property-based fuzzing and bounded-memory statistical collision testing in CI, added `rumdl` markdown linting/formatting, `zizmor` and `actionlint` workflow linting, `prek.toml` pre-commit hooks, and OpenSSF Scorecard analysis, set a fixed CodeQL analysis category shared by the CI and release workflows, hardened the release pipeline with SLSA build provenance and PEP 740 PyPI attestations plus `CHANGELOG.md` release notes, extended `codespell` to repository documentation, and removed `pylint` and `tox`.
+
+### Fixed
+
+- CLI out-of-range lengths (`<= 0` or `> 98`) now exit with code `2` and an `argparse` usage error on `stderr` instead of an uncaught `ValueError` traceback.
 
 ## [2.1.0] - 2026-10-25
 

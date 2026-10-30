@@ -80,6 +80,8 @@ jobs:
           "$WHEEL_TEST_DIR/venv/bin/python" -I -c "import pathlib, cuid2; assert 'site-packages' in pathlib.Path(cuid2.__file__).parts, cuid2.__file__"
           CLI_ID="$("$WHEEL_TEST_DIR/venv/bin/cuid2")"
           test "${#CLI_ID}" -eq 24
+          MOD_ID="$("$WHEEL_TEST_DIR/venv/bin/python" -I -m cuid2)"
+          test "${#MOD_ID}" -eq 24
           (
             cd "$WHEEL_TEST_DIR"
             COVERAGE_FILE="$WHEEL_TEST_DIR/.coverage" "$WHEEL_TEST_DIR/venv/bin/python" -I -m pytest -c "$GITHUB_WORKSPACE/pyproject.toml" --cov-config="$GITHUB_WORKSPACE/pyproject.toml" -o cache_dir="$WHEEL_TEST_DIR/.pytest_cache" "$GITHUB_WORKSPACE/local/tests"
@@ -139,6 +141,8 @@ jobs:
           languages: python
       - name: Perform Runtime Code Analysis
         uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          category: "/language:python"
         env:
           CODEQL_EXTRACTOR_PYTHON_ANALYSIS_VERSION: "3.13"
       - name: Perform Secure Code Analysis (Secrets)

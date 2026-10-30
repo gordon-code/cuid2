@@ -6,6 +6,7 @@ import inspect
 import re
 import time
 import warnings
+from functools import partial
 from math import floor
 from secrets import SystemRandom
 from typing import TYPE_CHECKING, ClassVar, Final, Protocol
@@ -244,11 +245,7 @@ def create_id(length: int | None = None) -> str:
 
 
 def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
-    """Wrap `create_id` and return a zero-argument callable that generates a CUID string.
-
-    .. deprecated:: 2.1.0
-        `cuid_wrapper` is deprecated and will be removed in v3.0.0.
-        Use `create_id` or `functools.partial(create_id, length=...)` instead.
+    """Wrap `create_id` in `functools.partial` and return a callable that generates a CUID string.
 
     Parameters
     ----------
@@ -261,7 +258,7 @@ def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
     Returns
     -------
     Callable[[], str]
-        A callable that generates a CUID string.
+        A `functools.partial(create_id, length=length)` callable that generates a CUID string.
 
     Raises
     ------
@@ -271,18 +268,7 @@ def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
     Warns
     -----
     DeprecationWarning
-        Always emitted because `cuid_wrapper` is deprecated and will be removed in v3.0.0,
-        and also emitted if the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
+        If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
     """
     _validate_length(length)
-    warnings.warn(
-        "cuid_wrapper() is deprecated and will be removed in v3.0.0. "
-        "Use create_id() or functools.partial(create_id, length=...) instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-
-    def cuid() -> str:
-        return create_id(length=length)
-
-    return cuid
+    return partial(create_id, length=length)

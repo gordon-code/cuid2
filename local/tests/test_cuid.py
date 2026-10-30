@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import importlib
+import pickle
 import warnings
+from functools import partial
 from math import floor
 from secrets import SystemRandom
 from timeit import repeat
@@ -9,7 +10,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-import cuid2.cli
 import cuid2.generator
 from cuid2 import (
     BIG_LENGTH,
@@ -22,7 +22,6 @@ from cuid2 import (
     cuid_wrapper,
     is_cuid,
 )
-from cuid2.cli import main as cli_main
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -454,8 +453,7 @@ class TestIsCuid:
     #  Tests that ids generated via generate(length=...) and via the wrapper also validate.
     def test_is_cuid_accepts_generate_override_and_wrapper(self: TestIsCuid) -> None:
         cuid = Cuid()
-        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
-            wrapper = cuid_wrapper()
+        wrapper = cuid_wrapper()
         for _ in range(250):
             assert Cuid.is_cuid(cuid.generate(length=8)) is True
             assert Cuid.is_cuid(wrapper()) is True
@@ -561,17 +559,18 @@ class TestCreateId:
 
 class TestCuidWrapper:
     def test_cuid_wrapper_is_callable(self: TestCuidWrapper) -> None:
-        """Tests that the function emits DeprecationWarning and returns a callable."""
-        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated") as record:
-            cuid_func: Callable[[], str] = cuid_wrapper()
-        assert record[0].filename == __file__
+        """Tests that cuid_wrapper() returns a functools.partial bound to create_id."""
+        cuid_func: Callable[[], str] = cuid_wrapper()
         assert callable(cuid_func)
+        assert isinstance(cuid_func, partial)
+        assert cuid_func.func is create_id
+        assert cuid_func.args == ()
+        assert cuid_func.keywords == {"length": DEFAULT_LENGTH}
 
     def test_cuid_wrapper_delegates_to_create_id_lazily(self: TestCuidWrapper, mocker: Mock) -> None:
         """Tests that cuid_wrapper() is lazy at creation time and delegates to create_id()."""
         spy = mocker.spy(cuid2.generator, "create_id")
-        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
-            cuid_func: Callable[[], str] = cuid_wrapper(length=10)
+        cuid_func: Callable[[], str] = cuid_wrapper(length=10)
         assert cuid2.generator._default_generator is None
         assert spy.call_count == 0
         generated: str = cuid_func()
@@ -581,45 +580,51 @@ class TestCuidWrapper:
 
     def test_cuid_wrapper_return_type(self: TestCuidWrapper) -> None:
         """Tests that the function returns a callable that generates a CUID string."""
-        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
-            cuid_func: Callable[[], str] = cuid_wrapper()
+        cuid_func: Callable[[], str] = cuid_wrapper()
         assert isinstance(cuid_func(), str)
 
     def test_cuid_wrapper_no_parameters(self: TestCuidWrapper) -> None:
-        """Tests that the function doesn't accept any parameters."""
-        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
-            cuid_func: Callable[[], str] = cuid_wrapper()
+        """Tests that positional length raises TypeError while keyword override is accepted by partial."""
+        cuid_func: Callable[[], str] = cuid_wrapper()
         with pytest.raises(
             TypeError,
-            match="cuid\\(\\) takes 0 positional arguments but 1 was given",
+            match=r"create_id\(\) got multiple values for argument 'length'",
         ):
             cuid_func(DEFAULT_LENGTH)  # type: ignore[call-arg]
+        overridden: str = cuid_func(length=10)  # type: ignore[call-arg]
+        assert len(overridden) == 10
+        assert is_cuid(overridden) is True
+
+    def test_cuid_wrapper_pickle_round_trip(self: TestCuidWrapper) -> None:
+        """Tests that the returned functools.partial can be pickled and unpickled."""
+        restored = pickle.loads(pickle.dumps(cuid_wrapper(length=10)))  # noqa: S301
+        assert isinstance(restored, partial)
+        assert restored.func is create_id
+        assert restored.keywords == {"length": 10}
+        assert len(restored()) == 10
 
     def test_cuid_wrapper_length(self: TestCuidWrapper) -> None:
         """Tests that the function returns a callable that generates a CUID string with the default length."""
-        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
-            cuid_func: Callable[[], str] = cuid_wrapper()
+        cuid_func: Callable[[], str] = cuid_wrapper()
         assert len(cuid_func()) == DEFAULT_LENGTH
 
     @pytest.mark.parametrize("length", [MIN_LENGTH, 10, BIG_LENGTH])
     def test_cuid_wrapper_custom_length(self: TestCuidWrapper, length: int) -> None:
         """Tests that cuid_wrapper generates a CUID string with a specified length."""
-        with pytest.warns(DeprecationWarning, match=r"cuid_wrapper\(\) is deprecated"):
-            cuid_func: Callable[[], str] = cuid_wrapper(length=length)
+        cuid_func: Callable[[], str] = cuid_wrapper(length=length)
         assert len(cuid_func()) == length
 
     @pytest.mark.parametrize("length", [1, BIG_LENGTH + 1, MAXIMUM_LENGTH])
     def test_cuid_wrapper_deprecated_length(self: TestCuidWrapper, length: int) -> None:
         """Tests that cuid_wrapper emits DeprecationWarning for lengths outside MIN_LENGTH..BIG_LENGTH."""
-        with pytest.warns(
-            DeprecationWarning,
-            match=r"(outside the CUID2 specification range|cuid_wrapper\(\) is deprecated)",
-        ) as record:
+        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
             cuid_func: Callable[[], str] = cuid_wrapper(length=length)
-        assert len(record) == 2
-        assert all(warning.filename == __file__ for warning in record)
-        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range"):
+        assert len(record) == 1
+        assert record[0].filename == __file__
+        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as call_record:
             generated = cuid_func()
+        assert len(call_record) == 1
+        assert call_record[0].filename == __file__
         assert len(generated) <= length
         if length < MAXIMUM_LENGTH - 1:
             assert len(generated) == length
@@ -642,79 +647,3 @@ class TestCuidWrapper:
         """Tests that cuid_wrapper raises ValueError when length is out of bounds."""
         with pytest.raises(ValueError, match=expected_match):
             cuid_wrapper(length=invalid_length)
-
-
-class TestCli:
-    def test_cli_default_length(
-        self: TestCli,
-        monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        """Tests that the CLI prints a default-length CUID when invoked without arguments."""
-        cli_main([])
-        output = capsys.readouterr().out.strip()
-        assert len(output) == DEFAULT_LENGTH
-        assert output[0].isalpha()
-
-        monkeypatch.setattr("sys.argv", ["cuid2"])
-        cli_main()
-        output_default_argv = capsys.readouterr().out.strip()
-        assert len(output_default_argv) == DEFAULT_LENGTH
-        assert output_default_argv[0].isalpha()
-
-    @pytest.mark.parametrize("length", [MIN_LENGTH, 10, BIG_LENGTH])
-    def test_cli_custom_length(self: TestCli, length: int, capsys: pytest.CaptureFixture[str]) -> None:
-        """Tests that the CLI prints a CUID of the requested custom length."""
-        cli_main([str(length)])
-        output = capsys.readouterr().out.strip()
-        assert len(output) == length
-        assert output[0].isalpha()
-
-    @pytest.mark.parametrize("length", [1, MAXIMUM_LENGTH])
-    def test_cli_boundary_lengths(self: TestCli, length: int, capsys: pytest.CaptureFixture[str]) -> None:
-        """Tests that the CLI emits DeprecationWarning and prints a CUID for deprecated boundary lengths."""
-        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range"):
-            cli_main([str(length)])
-        output = capsys.readouterr().out.strip()
-        assert len(output) <= length
-        if length < MAXIMUM_LENGTH - 1:
-            assert len(output) == length
-        assert output[0].isalpha()
-
-    @pytest.mark.parametrize(
-        ("arg", "expected_match"),
-        [
-            ("0", r"Length must be at least 1 character\."),
-            ("-5", r"Length must be at least 1 character\."),
-            (str(MAXIMUM_LENGTH + 1), r"Length must never exceed 98 characters\."),
-        ],
-    )
-    def test_cli_invalid_lengths(self: TestCli, arg: str, expected_match: str) -> None:
-        """Tests that the CLI rejects lengths <= 0 and > MAXIMUM_LENGTH."""
-        with pytest.raises(ValueError, match=expected_match):
-            cli_main([arg])
-
-    def test_cli_non_integer_argument(self: TestCli) -> None:
-        """Tests that the CLI exits when given a non-integer argument."""
-        with pytest.raises(SystemExit):
-            cli_main(["invalid"])
-
-    def test_cli_does_not_initialize_generator_on_import(
-        self: TestCli,
-        mocker: Mock,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        """Tests that importing cuid2.cli does not initialize a CUID generator until main() is called."""
-        try:
-            spy = mocker.spy(cuid2.generator, "create_id")
-            importlib.reload(cuid2.cli)
-            assert spy.call_count == 0
-            assert cuid2.generator._default_generator is None
-            assert not hasattr(cuid2.cli, "generate_cuid")
-            cuid2.cli.main([])
-            assert spy.call_count == 1
-            output = capsys.readouterr().out.strip()
-            assert len(output) == DEFAULT_LENGTH
-        finally:
-            mocker.stopall()
-            importlib.reload(cuid2.cli)
