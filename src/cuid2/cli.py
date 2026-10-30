@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from argparse import Action, ArgumentParser, ArgumentTypeError, RawDescriptionHelpFormatter
+from contextlib import suppress
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -14,17 +16,24 @@ __all__ = ["main"]
 
 if TYPE_CHECKING:
     from argparse import Namespace
-    from collections.abc import Sequence
+    from collections.abc import Iterable, Iterator, Sequence
 
 _SLUG_LENGTH: int = 5
 
 
-def _write_output(text: str) -> None:
+def _write_lines(lines: Iterable[str]) -> None:
     try:
-        sys.stdout.write(text)
+        for line in lines:
+            sys.stdout.write(line)
         sys.stdout.flush()
     except BrokenPipeError:
-        return
+        with suppress(OSError):
+            stdout_fd = sys.stdout.fileno()
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            try:
+                os.dup2(devnull, stdout_fd)
+            finally:
+                os.close(devnull)
 
 
 class _VersionAction(Action):
@@ -39,7 +48,7 @@ class _VersionAction(Action):
         del namespace, values, option_string
         from importlib.metadata import version  # noqa: PLC0415
 
-        _write_output(f"{parser.prog} {version('cuid2')}\n")
+        _write_lines((f"{parser.prog} {version('cuid2')}\n",))
         parser.exit(0)
 
 
@@ -180,20 +189,32 @@ def _validate_mode_flags(parser: ArgumentParser, cli_args: Namespace) -> None:
         parser.error("arguments -n/-c/--count and -f/--fingerprint are not allowed with --check/--validate")
 
 
+def _iter_candidates(check_arg: str) -> Iterator[str]:
+    if check_arg != "-":
+        yield check_arg
+        return
+    empty = True
+    for line in sys.stdin:
+        empty = False
+        yield line.rstrip("\r\n")
+    if empty:
+        yield ""
+
+
 def _run_check(check_arg: str, target_length: int | None, *, quiet: bool) -> int:
-    candidates = [line.rstrip("\r\n") for line in sys.stdin] if check_arg == "-" else [check_arg]
-    if not candidates:
-        candidates = [""]
     min_len = target_length if target_length is not None else MIN_LENGTH
     max_len = target_length if target_length is not None else MAXIMUM_LENGTH
     all_valid = True
-    lines: list[str] = []
-    for candidate in candidates:
-        valid = is_cuid(candidate, min_length=min_len, max_length=max_len)
-        all_valid = all_valid and valid
-        lines.append(f"{candidate or '<empty>'}: {'valid' if valid else 'invalid'}\n")
-    if not quiet:
-        _write_output("".join(lines))
+
+    def _evaluate() -> Iterator[str]:
+        nonlocal all_valid
+        for candidate in _iter_candidates(check_arg):
+            valid = is_cuid(candidate, min_length=min_len, max_length=max_len)
+            all_valid = all_valid and valid
+            if not quiet:
+                yield f"{candidate or '<empty>'}: {'valid' if valid else 'invalid'}\n"
+
+    _write_lines(_evaluate())
     return 0 if all_valid else 1
 
 
@@ -231,5 +252,4 @@ def main(args: Sequence[str] | None = None) -> None:
             fingerprint=partial(create_fingerprint, fingerprint_data=cli_args.fingerprint),
         )
     )
-    output = "".join(f"{cuid_generator.generate()}\n" for _ in range(count))
-    _write_output(output)
+    _write_lines(f"{cuid_generator.generate()}\n" for _ in range(count))
