@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import string
+import threading
+import time
 from typing import TYPE_CHECKING
 
 import pytest
@@ -366,3 +368,55 @@ class TestCreateCounter:
         counter = utils.create_counter(0)
         with pytest.raises(AttributeError):
             _ = counter.count  # type: ignore[attr-defined]
+
+    def test_counter_thread_safety_barrier(self: TestCreateCounter) -> None:
+        """Tests that concurrent increments across 8 threads produce a contiguous, duplicate-free sequence."""
+        counter = utils.create_counter(0)
+        num_threads = 8
+        increments_per_thread = 500
+        barrier = threading.Barrier(num_threads)
+        buckets: list[list[int]] = [[] for _ in range(num_threads)]
+
+        def worker(index: int) -> None:
+            barrier.wait()
+            buckets[index] = [counter() for _ in range(increments_per_thread)]
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(num_threads)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        combined = [val for bucket in buckets for val in bucket]
+        total = num_threads * increments_per_thread
+        assert len(combined) == total
+        assert set(combined) == set(range(1, total + 1))
+        assert counter() == total + 1
+
+    def test_counter_thread_safety_forced_interleaving(self: TestCreateCounter) -> None:
+        """Tests that the counter lock prevents lost updates even when addition yields the GIL."""
+
+        class _YieldingInt(int):
+            def __add__(self: _YieldingInt, other: int) -> _YieldingInt:
+                time.sleep(0)
+                return _YieldingInt(super().__add__(other))
+
+        counter = utils.create_counter(_YieldingInt(0))
+        num_threads = 8
+        increments_per_thread = 25
+        barrier = threading.Barrier(num_threads)
+        buckets: list[list[int]] = [[] for _ in range(num_threads)]
+
+        def worker(index: int) -> None:
+            barrier.wait()
+            buckets[index] = [int(counter()) for _ in range(increments_per_thread)]
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(num_threads)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        combined = [val for bucket in buckets for val in bucket]
+        total = num_threads * increments_per_thread
+        assert set(combined) == set(range(1, total + 1))

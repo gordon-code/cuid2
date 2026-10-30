@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import inspect
+import os
 import re
+import threading
 import time
 import warnings
+from contextlib import suppress
 from functools import partial
 from math import floor
 from secrets import SystemRandom
 from typing import TYPE_CHECKING, ClassVar, Final, Protocol
+from weakref import WeakSet
 
 from cuid2 import utils
 from cuid2.utils import BIG_LENGTH, DEFAULT_LENGTH, INITIAL_COUNT_MAX, MAXIMUM_LENGTH, MIN_LENGTH
@@ -121,7 +125,7 @@ def is_cuid(cuid_str: str, min_length: int = MIN_LENGTH, max_length: int = MAXIM
 
 
 class Cuid:
-    """Configurable CUID2 generator instance."""
+    """Configurable thread- and fork-safe CUID2 generator instance."""
 
     def __init__(
         self: Cuid,
@@ -135,8 +139,10 @@ class Cuid:
         Parameters
         ----------
         random_generator : Callable[[], "Random"], default=SystemRandom
-            Used as the base random generator. The default value is `secrets.SystemRandom`, which is a
-            cryptographically secure random number generator provided by the Python standard library.
+            Factory callable returning the random number generator instance. Defaults to `secrets.SystemRandom`.
+            On POSIX `os.fork()`, `random_generator()` is re-invoked in the child process (and reseeded with OS
+            entropy via `.seed()` if it returns the same generator object as the parent). Fixed-seed factories
+            (such as `functools.partial(random.Random, 42)`) are intended for deterministic single-process tests.
         counter : Callable[[int], Callable[[], int]], default=utils.create_counter
             The `counter` parameter is a callable that creates a counter returning an incremented value each time it
             is called. The `create_counter` function from the `utils` module is used by default.
@@ -160,10 +166,30 @@ class Cuid:
         """
         _validate_length(length)
 
+        self._random_generator: Callable[[], Random] = random_generator
+        self._counter_factory: Callable[[int], Callable[[], int]] = counter
+        self._fingerprint_factory: FingerprintCallable = fingerprint
+        self._lock: threading.Lock = threading.Lock()
+
         self._random: Random = random_generator()
         self._counter: Callable[[], int] = counter(floor(self._random.random() * INITIAL_COUNT_MAX))
         self._length: int = length
         self._fingerprint: str = fingerprint(random_generator=self._random)
+
+        with _instances_lock:
+            _instances.add(self)
+
+    def _reinit_after_fork(self: Cuid) -> None:
+        """Re-initialize lock, random generator, counter, and fingerprint in a forked child process."""
+        self._lock = threading.Lock()
+        prev_random: Random = self._random
+        new_random: Random = self._random_generator()
+        if new_random is prev_random:
+            with suppress(AttributeError, NotImplementedError, TypeError):
+                new_random.seed()
+        self._random = new_random
+        self._counter = self._counter_factory(floor(self._random.random() * INITIAL_COUNT_MAX))
+        self._fingerprint = self._fingerprint_factory(random_generator=self._random)
 
     def generate(self: Cuid, length: int | None = None) -> str:
         """Generate a universally unique, base36-encoded string with a specified length.
@@ -197,24 +223,47 @@ class Cuid:
             _validate_length(length)
         resolved_length: int = self._length if length is None else length
 
-        first_letter: str = utils.create_letter(random_generator=self._random)
+        with self._lock:
+            first_letter: str = utils.create_letter(random_generator=self._random)
+            base36_count: str = utils.base36_encode(self._counter())
+            salt: str = utils.create_entropy(length=resolved_length, random_generator=self._random)
+            fingerprint: str = self._fingerprint
 
         base36_time: str = utils.base36_encode(time.time_ns())
-        base36_count: str = utils.base36_encode(self._counter())
-
-        salt: str = utils.create_entropy(length=resolved_length, random_generator=self._random)
-        hash_input: str = base36_time + salt + base36_count + self._fingerprint
+        hash_input: str = base36_time + salt + base36_count + fingerprint
 
         return first_letter + utils.create_hash(hash_input)[1:resolved_length]
 
     is_cuid: ClassVar[IsCuidCallable] = staticmethod(is_cuid)
 
 
+_instances: Final[WeakSet[Cuid]] = WeakSet()
+_instances_lock: threading.Lock = threading.Lock()
 _default_generator: Cuid | None = None
+_default_generator_lock: threading.Lock = threading.Lock()
+
+
+def _reinit_after_fork() -> None:
+    """Reset the lazy default generator and re-initialize live Cuid instances after os.fork()."""
+    global _default_generator, _default_generator_lock, _instances_lock  # noqa: PLW0603
+    _default_generator = None
+    _default_generator_lock = threading.Lock()
+    _instances_lock = threading.Lock()
+    for instance in list(_instances):
+        instance._reinit_after_fork()  # noqa: SLF001 # pyright: ignore[reportPrivateUsage]
+
+
+def _register_at_fork() -> None:
+    """Register the POSIX post-fork callback when supported by the current platform."""
+    if hasattr(os, "register_at_fork"):
+        os.register_at_fork(after_in_child=_reinit_after_fork)
+
+
+_register_at_fork()
 
 
 def create_id(length: int | None = None) -> str:
-    """Generate a CUID2 string using the module-level lazy default generator.
+    """Generate a CUID2 string using the thread- and fork-safe module-level lazy default generator.
 
     Parameters
     ----------
@@ -239,9 +288,14 @@ def create_id(length: int | None = None) -> str:
         If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
     """
     global _default_generator  # noqa: PLW0603
-    if _default_generator is None:
-        _default_generator = Cuid()
-    return _default_generator.generate(length=length)
+    generator = _default_generator
+    if generator is None:
+        with _default_generator_lock:
+            generator = _default_generator
+            if generator is None:
+                generator = Cuid()
+                _default_generator = generator
+    return generator.generate(length=length)
 
 
 def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
