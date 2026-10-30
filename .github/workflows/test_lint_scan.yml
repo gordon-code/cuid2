@@ -142,7 +142,6 @@ jobs:
       - name: Perform Runtime Code Analysis
         uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
-          # Fixed so every caller (CI, release) uploads to one code-scanning configuration.
           category: "/language:python"
         env:
           CODEQL_EXTRACTOR_PYTHON_ANALYSIS_VERSION: "3.13"
