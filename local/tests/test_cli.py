@@ -224,7 +224,7 @@ class TestCli:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Tests that -f/--fingerprint is hashed verbatim (like upstream) and rejects empty strings."""
-        hash_spy = mocker.spy(cuid2.utils, "create_hash")
+        hash_spy = mocker.spy(cuid2.utils, "_create_hash_slice")
         cli_main(["-f", "host-a", "-n", "2"])
         lines = capsys.readouterr().out.splitlines()
         assert len(lines) == 2

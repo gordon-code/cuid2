@@ -8,6 +8,11 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 ## [Unreleased]
 
+### Changed
+
+- Faster ID generation and cold-start imports via single-draw `getrandbits` MSB fixed-point entropy and letter generation (`< 2^-64` bias), leading-digit base36 SHA3-512 hash encoding, reduced lock and reference-count contention on free-threaded Python (`3.14t` and `3.15t`), and deferred `inspect` and `socket` imports.
+- Custom `random_generator` instances must implement `.getrandbits(k)` (typed as `random.Random` instead of `_random.Random`), and seeded `random.Random` generators produce a different sequence of IDs than in `2.2.0`.
+
 ## [2.2.0] - 2026-10-30
 
 ### Added
