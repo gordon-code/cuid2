@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import os
 import re
 import threading
@@ -11,9 +10,8 @@ import warnings
 from contextlib import suppress
 from copy import copy, deepcopy
 from functools import partial
-from math import floor
-from secrets import SystemRandom
-from typing import TYPE_CHECKING, ClassVar, Final, NamedTuple, Protocol
+from random import SystemRandom
+from typing import TYPE_CHECKING, NamedTuple
 
 from cuid2 import utils
 from cuid2.utils import BIG_LENGTH, DEFAULT_LENGTH, INITIAL_COUNT_MAX, MAXIMUM_LENGTH, MIN_LENGTH
@@ -31,8 +29,9 @@ __all__ = [
 ]
 
 if TYPE_CHECKING:
-    from _random import Random
     from collections.abc import Callable
+    from random import Random
+    from typing import ClassVar, Final, Protocol
 
     class FingerprintCallable(Protocol):
         """Protocol for fingerprint generator callables."""
@@ -82,6 +81,8 @@ def _validate_length(length: int) -> None:
         msg = "Length must never exceed 98 characters."
         raise ValueError(msg)
     if length < MIN_LENGTH or length > BIG_LENGTH:
+        import inspect  # noqa: PLC0415
+
         stacklevel: int = 1
         frame = inspect.currentframe()
         while frame is not None and frame.f_code.co_filename == __file__:
@@ -165,8 +166,9 @@ class Cuid:
         Parameters
         ----------
         random_generator : Callable[[], "Random"], default=SystemRandom
-            Factory callable returning the random number generator instance. Defaults to `secrets.SystemRandom`.
-            Called again in a forked child process (see Notes).
+            Factory callable returning the random number generator instance. Defaults to `random.SystemRandom`
+            (`os.urandom`). Custom generator instances must provide `.getrandbits(k)` (as every `random.Random`
+            subclass does). Called again in a forked child process (see Notes).
         counter : Callable[[int], Callable[[], int]], default=utils.create_counter
             The `counter` parameter is a callable that creates a counter returning an incremented value each time it
             is called. The `create_counter` function from the `utils` module is used by default. Called again with a
@@ -249,7 +251,9 @@ class Cuid:
             pid=os.getpid(),
             lock=threading.RLock(),
             random=random_generator,
-            counter=self._counter_factory(floor(random_generator.random() * INITIAL_COUNT_MAX)),
+            counter=self._counter_factory(
+                utils._create_initial_count(random_generator),  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+            ),
             fingerprint=self._fingerprint_factory(random_generator=random_generator),
         )
 
@@ -286,15 +290,26 @@ class Cuid:
         resolved_length: int = self._length if length is None else length
 
         state: _GeneratorState = self._current_state()
+        draw_bits: int = utils._letter_and_entropy_bits(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+            resolved_length,
+        )
         with state.lock:
-            first_letter: str = utils.create_letter(random_generator=state.random)
-            base36_count: str = utils.base36_encode(state.counter())
-            salt: str = utils.create_entropy(length=resolved_length, random_generator=state.random)
+            entropy_bits: int = state.random.getrandbits(draw_bits)
+            count: int = state.counter()
 
+        first_letter, salt = utils._decode_letter_and_entropy(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+            entropy_bits,
+            resolved_length,
+        )
+        base36_count: str = utils.base36_encode(count)
         base36_time: str = utils.base36_encode(time.time_ns())
         hash_input: str = base36_time + salt + base36_count + state.fingerprint
 
-        return first_letter + utils.create_hash(hash_input)[1:resolved_length]
+        return first_letter + utils._create_hash_slice(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+            hash_input,
+            1,
+            resolved_length,
+        )
 
     is_cuid: ClassVar[IsCuidCallable] = staticmethod(is_cuid)
 

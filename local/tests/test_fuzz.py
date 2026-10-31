@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 from typing import TYPE_CHECKING, Protocol, cast
+from unittest.mock import Mock, patch
 
 import pytest
 from hypothesis import given
@@ -151,6 +152,35 @@ def test_fuzz_cuid_deprecated_and_invalid_lengths(deprecated_length: int, invali
         cuid_wrapper(length=invalid_length)
 
 
+@given(
+    digest_int=st.integers(min_value=0, max_value=(1 << 512) - 1),
+    length=st.integers(min_value=1, max_value=MAXIMUM_LENGTH),
+)
+def test_fuzz_create_hash_slice_arbitrary_digest(digest_int: int, length: int) -> None:
+    mock_hash = Mock()
+    mock_hash.digest.return_value = digest_int.to_bytes(64, byteorder="big")
+    with patch.object(utils, "sha3_512", return_value=mock_hash):
+        full_hash = utils.create_hash("fuzz")
+        assert utils._create_hash_slice("fuzz", 1, length) == full_hash[1:length]
+        assert utils._create_hash_slice("fuzz", 0, BIG_LENGTH) == full_hash[:BIG_LENGTH]
+
+
+@given(
+    data=st.text(max_size=200),
+    length=st.integers(min_value=1, max_value=MAXIMUM_LENGTH),
+)
+def test_fuzz_create_hash_slice_and_scale_randbits(data: str, length: int) -> None:
+    assert utils._create_hash_slice(data, 1, length) == utils.create_hash(data)[1:length]
+
+    modulus = BASE36_RADIX**length
+    draw_bits = modulus.bit_length() + 64
+    high_bits = draw_bits - 64
+    x_high = len(data) & ((1 << high_bits) - 1)
+    low_zero = utils._scale_randbits(x_high << 64, modulus, draw_bits)
+    low_ones = utils._scale_randbits((x_high << 64) | ((1 << 64) - 1), modulus, draw_bits)
+    assert 0 <= low_ones - low_zero <= 1
+
+
 _FUZZ_TARGETS: tuple[_FuzzTarget, ...] = cast(
     "tuple[_FuzzTarget, ...]",
     (
@@ -161,6 +191,8 @@ _FUZZ_TARGETS: tuple[_FuzzTarget, ...] = cast(
         test_fuzz_utils_primitives,
         test_fuzz_cuid_spec_lengths,
         test_fuzz_cuid_deprecated_and_invalid_lengths,
+        test_fuzz_create_hash_slice_arbitrary_digest,
+        test_fuzz_create_hash_slice_and_scale_randbits,
     ),
 )
 

@@ -5,11 +5,13 @@ import multiprocessing
 import os
 import pickle
 import random
+import string
+import subprocess
+import sys
 import threading
 import time
 import warnings
 from functools import partial
-from math import floor
 from secrets import SystemRandom
 from timeit import repeat
 from typing import TYPE_CHECKING
@@ -27,6 +29,7 @@ from cuid2 import (
     create_id,
     cuid_wrapper,
     is_cuid,
+    utils,
 )
 
 if TYPE_CHECKING:
@@ -47,8 +50,8 @@ class TestCuid:
             repeat=10,
             number=50_000,
         )
-        # 50k iterations of cuid.generate() should take less than 2 seconds
-        assert min(timing_result) < 2
+        # 50k iterations of cuid.generate() should take less than 0.7 seconds
+        assert min(timing_result) < 0.7
 
     #  Tests that generate() returns a string of length DEFAULT_LENGTH.
     def test_generate_default_length(self: TestCuid) -> None:
@@ -137,12 +140,11 @@ class TestCuid:
     def test_generate_same_random_values(self: TestCuid, mocker: Mock) -> None:
         mock_random_class = mocker.Mock()
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         mock_random_class.return_value = mock_random
 
-        mocker.patch("cuid2.utils.create_entropy", return_value="mocked_entropy")
-        mocker.patch("cuid2.utils.create_letter", return_value="l")
-        mocker.patch("cuid2.utils.create_hash", return_value="mocked_hash")
+        mocker.patch("cuid2.utils._decode_letter_and_entropy", return_value=("l", "mocked_entropy"))
+        mocker.patch("cuid2.utils._create_hash_slice", return_value="ocked_hash")
 
         # Initialize Cuid with mocked random generator
         cuid = Cuid(random_generator=mock_random_class)
@@ -167,22 +169,21 @@ class TestCuid:
     def test_mock_random_generator_and_fingerprint(self: TestCuid, mocker: Mock) -> None:
         mock_random_class = mocker.Mock()
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         mock_random_class.return_value = mock_random
 
         mock_fingerprint = mocker.Mock()
         mock_fingerprint.return_value = "mocked_fingerprint"
 
-        mocker.patch("cuid2.utils.create_entropy", return_value="mocked_entropy")
-        mocker.patch("cuid2.utils.create_letter", return_value="l")
-        mocker.patch("cuid2.utils.create_hash", return_value="mocked_hash")
+        mocker.patch("cuid2.utils._decode_letter_and_entropy", return_value=("l", "mocked_entropy"))
+        mocker.patch("cuid2.utils._create_hash_slice", return_value="ocked_hash")
 
         # Initialize Cuid with mocked random generator and fingerprint functions
         cuid = Cuid(random_generator=mock_random_class, fingerprint=mock_fingerprint)
 
         # Generate a Cuid and assert that the mocked functions were called correctly
         cuid_str = cuid.generate()
-        assert cuid_str == "locked_hash"  # first letter is "l" from mocked create_letter function
+        assert cuid_str == "locked_hash"  # first letter is "l" from mocked _decode_letter_and_entropy
         assert cuid._state.fingerprint == "mocked_fingerprint"
         assert (
             cuid._state.counter() == 238391185
@@ -199,7 +200,7 @@ class TestCuid:
         # Arrange
         mock_random_class = mocker.Mock()
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         mock_random_class.return_value = mock_random
         mock_counter = mocker.Mock()
         mock_fingerprint = mocker.Mock()
@@ -209,7 +210,8 @@ class TestCuid:
 
         # Assert
         assert cuid._state.random == mock_random_class()
-        assert cuid._state.counter == mock_counter(floor(cuid._state.random.random() * INITIAL_COUNT_MAX))
+        mock_counter.assert_called_once_with(INITIAL_COUNT_MAX // 2)
+        assert cuid._state.counter == mock_counter.return_value
         assert cuid._length == DEFAULT_LENGTH
         assert cuid._state.fingerprint == mock_fingerprint(random_generator=cuid._state.random)
 
@@ -218,13 +220,13 @@ class TestCuid:
         # Arrange
         mock_random_class = mocker.Mock()
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         mock_random_class.return_value = mock_random
         mock_counter = mocker.Mock()
         mock_counter.return_value = lambda: 123456789
         mock_fingerprint = mocker.Mock(return_value="abcdefg")
         mocker.patch("time.time_ns", return_value=1627584000000000000)  # 2021-07-30 00:00:00 UTC
-        mocker.patch("cuid2.utils.create_letter", return_value="l")
+        mocker.patch("cuid2.utils._decode_letter_and_entropy", return_value=("l", "i" * DEFAULT_LENGTH))
 
         cuid = Cuid(random_generator=mock_random_class, counter=mock_counter, fingerprint=mock_fingerprint)
 
@@ -244,14 +246,14 @@ class TestCuid:
                 super().__init__(seed)
                 self._busy = False
 
-            def random(self: _NonReentrantRandom) -> float:
+            def getrandbits(self: _NonReentrantRandom, k: int) -> int:
                 if self._busy:
                     msg = "Concurrent access to non-reentrant random generator"
                     raise RuntimeError(msg)
                 self._busy = True
                 try:
                     time.sleep(0)
-                    return super().random()
+                    return super().getrandbits(k)
                 finally:
                     self._busy = False
 
@@ -291,11 +293,11 @@ class TestCuid:
                 self.entered = False
                 self.nested: list[str] = []
 
-            def random(self: _ReentrantRandom) -> float:
+            def getrandbits(self: _ReentrantRandom, k: int) -> int:
                 if self.cuid is not None and not self.entered:
                     self.entered = True
                     self.nested.append(self.cuid.generate())
-                return super().random()
+                return super().getrandbits(k)
 
         rng = _ReentrantRandom(1)
         cuid = Cuid(random_generator=lambda: rng)
@@ -311,6 +313,39 @@ class TestCuid:
         assert is_cuid(outer[0])
         assert is_cuid(rng.nested[0])
         assert outer[0] != rng.nested[0]
+
+    def test_generate_low_bit_stuck_random_covers_all_leading_letters(self: TestCuid) -> None:
+        class _LowBitStuckRandom(random.Random):
+            def getrandbits(self: _LowBitStuckRandom, k: int) -> int:
+                return super().getrandbits(k) & ~((1 << 64) - 1)
+
+        cuid = Cuid(random_generator=lambda: _LowBitStuckRandom(42))
+        leading_letters = {cuid.generate()[0] for _ in range(500)}
+        assert leading_letters == set(string.ascii_lowercase)
+
+    def test_module_level_random_seed_does_not_affect_default_cuid(self: TestCuid) -> None:
+        random.seed(12345)
+        cuid1 = Cuid()
+        random.seed(12345)
+        cuid2 = Cuid()
+        assert cuid1.generate() != cuid2.generate()
+
+    def test_create_id_does_not_load_inspect_on_normal_path(self: TestCuid) -> None:
+        code = (
+            "import sys; "
+            "import cuid2; "
+            "assert 'inspect' not in sys.modules; "
+            "cid = cuid2.create_id(); "
+            "assert len(cid) == 24; "
+            "assert 'inspect' not in sys.modules"
+        )
+        result = subprocess.run(  # noqa: S603
+            [sys.executable, "-I", "-c", code],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr
 
     def test_deepcopy_returns_independent_generator(self: TestCuid) -> None:
         """Tests that deepcopy builds fresh state instead of cloning the lock, RNG stream, or counter."""
@@ -879,13 +914,17 @@ class TestForkSafety:
         unreseeded_rng = random.Random()  # noqa: S311
         unreseeded_rng.setstate(shared_rng.getstate())
         # Draws made by the rebuild (counter + fingerprint entropy) and by one generate() (letter + salt).
-        for _ in range(1 + BIG_LENGTH + 1 + DEFAULT_LENGTH):
-            _ = unreseeded_rng.random()
+        for draw_bits in (
+            utils._COUNTER_DRAW_BITS,
+            (36**BIG_LENGTH).bit_length() + 64,
+            utils._letter_and_entropy_bits(DEFAULT_LENGTH),
+        ):
+            _ = unreseeded_rng.getrandbits(draw_bits)
         seed_spy = mocker.spy(shared_rng, "seed")
 
         class _SeedlessRng:
-            def random(self: _SeedlessRng) -> float:
-                return 0.25
+            def getrandbits(self: _SeedlessRng, k: int) -> int:
+                return 1 << (k - 2)
 
         seedless = _SeedlessRng()
         cuid_seedless = Cuid(random_generator=lambda: seedless)  # type: ignore[arg-type, return-value]
@@ -898,7 +937,7 @@ class TestForkSafety:
         assert cuid_shared._state.random is shared_rng
         assert shared_rng.getstate() != unreseeded_rng.getstate()
         assert cuid_seedless._state.pid == os.getpid()
-        assert cuid_seedless._state.random.random() == 0.25
+        assert cuid_seedless._state.random.getrandbits(4) == 4
 
     def test_rebuild_failure_propagates_without_affecting_other_instances(
         self: TestForkSafety,
