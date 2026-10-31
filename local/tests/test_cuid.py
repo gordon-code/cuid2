@@ -50,8 +50,8 @@ class TestCuid:
             repeat=10,
             number=50_000,
         )
-        # 50k iterations of cuid.generate() should take less than 2 seconds
-        assert min(timing_result) < 2
+        # 50k iterations of cuid.generate() should take less than 0.5 seconds
+        assert min(timing_result) < 0.5
 
     #  Tests that generate() returns a string of length DEFAULT_LENGTH.
     def test_generate_default_length(self: TestCuid) -> None:
