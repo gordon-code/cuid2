@@ -10,7 +10,7 @@ import warnings
 from contextlib import suppress
 from copy import copy, deepcopy
 from functools import partial
-from random import SystemRandom
+from random import SystemRandom  # secrets.SystemRandom re-exports random.SystemRandom (os.urandom CSPRNG)
 from typing import TYPE_CHECKING, NamedTuple
 
 from cuid2 import utils
@@ -81,18 +81,11 @@ def _validate_length(length: int) -> None:
         msg = "Length must never exceed 98 characters."
         raise ValueError(msg)
     if length < MIN_LENGTH or length > BIG_LENGTH:
-        import inspect  # noqa: PLC0415
-
-        stacklevel: int = 1
-        frame = inspect.currentframe()
-        while frame is not None and frame.f_code.co_filename == __file__:
-            stacklevel += 1
-            frame = frame.f_back
         warnings.warn(
             f"Length {length} outside the CUID2 specification range ({MIN_LENGTH}..{BIG_LENGTH}) "
             "is deprecated and will raise ValueError in v3.0.0.",
             DeprecationWarning,
-            stacklevel=stacklevel,
+            stacklevel=3,
         )
 
 
@@ -287,8 +280,9 @@ class Cuid:
         """
         if length is not None:
             _validate_length(length)
-        resolved_length: int = self._length if length is None else length
+        return self._generate(self._length if length is None else length)
 
+    def _generate(self: Cuid, resolved_length: int) -> str:
         state: _GeneratorState = self._current_state()
         draw_bits: int = utils._letter_and_entropy_bits(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
             resolved_length,
@@ -343,6 +337,8 @@ def create_id(length: int | None = None) -> str:
         If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
     """
     global _default_generator  # noqa: PLW0603
+    if length is not None:
+        _validate_length(length)
     generator = _default_generator
     if generator is None:
         with _process_lock(os.getpid()):
@@ -350,7 +346,7 @@ def create_id(length: int | None = None) -> str:
             if generator is None:
                 generator = Cuid()
                 _default_generator = generator
-    return generator.generate(length=length)
+    return generator._generate(DEFAULT_LENGTH if length is None else length)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
 
 
 def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:

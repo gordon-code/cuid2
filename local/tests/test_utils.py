@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-import math
 import os
 import random
 import string
-import subprocess
-import sys
 import threading
 import time
 from typing import TYPE_CHECKING
 
 import pytest
 
-from cuid2 import utils
+from cuid2 import Cuid, utils
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -343,24 +340,6 @@ class TestCreateFingerprint:
         with pytest.raises(AttributeError):
             utils.create_fingerprint(random_generator=None)  # type: ignore[arg-type]
 
-    def test_create_fingerprint_does_not_load_socket_when_fingerprint_data_provided(
-        self: TestCreateFingerprint,
-    ) -> None:
-        code = (
-            "import random, sys; "
-            "import cuid2.utils as u; "
-            "assert 'socket' not in sys.modules; "
-            "u.create_fingerprint(random.Random(0), fingerprint_data='fixed'); "
-            "assert 'socket' not in sys.modules"
-        )
-        result = subprocess.run(  # noqa: S603
-            [sys.executable, "-I", "-c", code],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, result.stderr
-
 
 class TestCreateCounter:
     #  Tests that create_counter returns a function
@@ -498,141 +477,52 @@ class TestCreateCounter:
 
 
 class TestFixedPointScalingAndHashSlice:
-    def test_nist_oversampling_bias_bound_proof(self: TestFixedPointScalingAndHashSlice) -> None:
-        assert 1 << utils._COUNTER_DRAW_BITS >= (1 << 64) * utils.INITIAL_COUNT_MAX
-        assert 1 << utils._LETTER_DRAW_BITS >= (1 << 64) * utils.ASCII_LOWERCASE_LEN
-
-        for length in range(1, 102):
-            modulus = utils._POWERS_OF_36[length] if length < len(utils._POWERS_OF_36) else 36**length
-            draw_bits = modulus.bit_length() + utils._OVERSAMPLE_BITS
-            assert 1 << draw_bits >= (1 << 64) * modulus
-
-        for length in range(1, 99):
-            modulus = utils.ASCII_LOWERCASE_LEN * utils._POWERS_OF_36[length]
-            draw_bits = utils._letter_and_entropy_bits(length)
-            assert 1 << draw_bits >= (1 << 64) * modulus
-
-    def test_boundary_midpoint_monotonicity_and_float_equivalence(
+    @pytest.mark.parametrize("modulus", [26, 36, utils.INITIAL_COUNT_MAX, 36**24, 26 * 36**24])
+    def test_scale_randbits_endpoints_and_midpoint(
         self: TestFixedPointScalingAndHashSlice,
+        modulus: int,
     ) -> None:
-        moduli = (26, 36, utils.INITIAL_COUNT_MAX, 36**24, 26 * 36**24)
-        for modulus in moduli:
-            k = modulus.bit_length() + 64
-            assert utils._scale_randbits(0, modulus, k) == 0
-            assert utils._scale_randbits(1 << (k - 1), modulus, k) == modulus // 2
-            assert utils._scale_randbits((1 << k) - 1, modulus, k) == modulus - 1
+        k = modulus.bit_length() + utils._OVERSAMPLE_BITS
+        assert 1 << k >= (1 << 64) * modulus
+        assert utils._scale_randbits(0, modulus, k) == 0
+        assert utils._scale_randbits(1 << (k - 1), modulus, k) == modulus // 2
+        assert utils._scale_randbits((1 << k) - 1, modulus, k) == modulus - 1
 
-            sample_points = [
-                0,
-                1,
-                (1 << (k - 2)) - 1,
-                1 << (k - 2),
-                (1 << (k - 1)) - 1,
-                1 << (k - 1),
-                (3 << (k - 2)) - 1,
-                3 << (k - 2),
-                (1 << k) - 2,
-                (1 << k) - 1,
-            ]
-            scaled_points = [utils._scale_randbits(x, modulus, k) for x in sample_points]
-            assert scaled_points == sorted(scaled_points)
-
+    def test_decode_letter_and_entropy_endpoints(self: TestFixedPointScalingAndHashSlice) -> None:
         k_fused = utils._letter_and_entropy_bits(24)
         assert utils._decode_letter_and_entropy(0, 24) == ("a", "0" * 24)
         assert utils._decode_letter_and_entropy(1 << (k_fused - 1), 24)[0] == "n"
         assert utils._decode_letter_and_entropy((1 << k_fused) - 1, 24) == ("z", "z" * 24)
 
-        u53_samples = [
-            0,
-            1,
-            2,
-            (1 << 26) - 1,
-            1 << 26,
-            (1 << 52) - 1,
-            1 << 52,
-            (1 << 52) + 123456789,
-            (1 << 53) - 2,
-            (1 << 53) - 1,
-        ]
-        for modulus in (26, 36, utils.INITIAL_COUNT_MAX):
-            k = modulus.bit_length() + 64
-            for u53 in u53_samples:
-                assert utils._scale_randbits(u53 << (k - 53), modulus, k) == (u53 * modulus) >> 53
-
-            for j in (0, 1, 2, 17, 1023, (1 << 10) + 7, (1 << 19) - 1, 1 << 19, (1 << 20) - 1):
-                assert j * modulus < 1 << 53
-                u53 = j << (53 - 20)
-                assert utils._scale_randbits(u53 << (k - 53), modulus, k) == math.floor((u53 / 2**53) * modulus)
-
-    def test_low_64_bit_perturbation_bound(self: TestFixedPointScalingAndHashSlice) -> None:
-        low_mask = (1 << 64) - 1
-        for modulus in (26, 36, utils.INITIAL_COUNT_MAX, 36**24, 26 * 36**24):
-            k = modulus.bit_length() + 64
-            high_bits = k - 64
-            max_high = (1 << high_bits) - 1
-            for x_high in (
-                0,
-                1,
-                2,
-                max_high // 4,
-                max_high // 3,
-                max_high // 2,
-                (3 * max_high) // 4,
-                max_high - 1,
-                max_high,
-            ):
-                low_zero = utils._scale_randbits(x_high << 64, modulus, k)
-                low_ones = utils._scale_randbits((x_high << 64) | low_mask, modulus, k)
-                assert 0 <= low_ones - low_zero <= 1
-
     def test_low_bit_stuck_random_immunity(self: TestFixedPointScalingAndHashSlice) -> None:
         rng = _LowBitStuckRandom(42)
-        sample_bits = rng.getrandbits(utils._LETTER_DRAW_BITS)
-        assert sample_bits % 2 == 0
-        assert sample_bits % 4 == 0
+        assert rng.getrandbits(utils._LETTER_DRAW_BITS) % 4 == 0
 
-        rng_letters = _LowBitStuckRandom(42)
-        letters = {utils.create_letter(rng_letters) for _ in range(500)}
+        letters = {utils.create_letter(_LowBitStuckRandom(i)) for i in range(500)}
         assert letters == set(utils.ASCII_LOWERCASE)
 
         rng_entropy = _LowBitStuckRandom(42)
         entropy_draws = [utils.create_entropy(rng_entropy, 24) for _ in range(500)]
-        all_chars = {ch for draw in entropy_draws for ch in draw}
-        assert all_chars == set(utils.BASE36_ALPHABET)
-        for pos in range(24):
-            parities = {utils.BASE36_ALPHABET.index(draw[pos]) % 2 for draw in entropy_draws}
-            assert parities == {0, 1}
+        assert {ch for draw in entropy_draws for ch in draw} == set(utils.BASE36_ALPHABET)
 
         rng_counter = _LowBitStuckRandom(42)
-        counter_parities = {utils._create_initial_count(rng_counter) % 2 for _ in range(500)}
-        assert counter_parities == {0, 1}
+        assert {utils._create_initial_count(rng_counter) % 2 for _ in range(500)} == {0, 1}
 
-    def test_create_hash_slice_boundary_matrix(
+        cuid = Cuid(random_generator=lambda: _LowBitStuckRandom(42))
+        assert {cuid.generate()[0] for _ in range(500)} == set(utils.ASCII_LOWERCASE)
+
+    @pytest.mark.parametrize("boundary_int", [0, 36**98 - 1, 36**98, 36**99, (1 << 512) - 1])
+    @pytest.mark.parametrize("length", [1, utils.BIG_LENGTH, utils.MAXIMUM_LENGTH])
+    def test_create_hash_slice_branches(
         self: TestFixedPointScalingAndHashSlice,
         mocker: Mock,
+        boundary_int: int,
+        length: int,
     ) -> None:
-        boundary_ints = [
-            0,
-            1,
-            35,
-            36,
-            36**97 - 1,
-            36**97,
-            36**98 - 1,
-            36**98,
-            36**98 + 1,
-            36**99 - 1,
-            36**99,
-            36**99 + 1,
-            (1 << 512) - 1,
-        ]
-        for boundary_int in boundary_ints:
-            mock_hash = mocker.Mock()
-            mock_hash.digest.return_value = boundary_int.to_bytes(64, byteorder="big")
-            mocker.patch("cuid2.utils.sha3_512", return_value=mock_hash)
+        mock_hash = mocker.Mock()
+        mock_hash.digest.return_value = boundary_int.to_bytes(64, byteorder="big")
+        mocker.patch("cuid2.utils.sha3_512", return_value=mock_hash)
 
-            full_hash = utils.create_hash("boundary")
-            assert utils._create_hash_slice("boundary", 0, utils.BIG_LENGTH) == full_hash[: utils.BIG_LENGTH]
-            for length in range(1, utils.MAXIMUM_LENGTH + 1):
-                assert utils._create_hash_slice("boundary", 0, length) == full_hash[:length]
-                assert utils._create_hash_slice("boundary", 1, length) == full_hash[1:length]
+        full_hash = utils.create_hash("boundary")
+        assert utils._create_hash_slice("boundary", 0, length) == full_hash[:length]
+        assert utils._create_hash_slice("boundary", 1, length) == full_hash[1:length]

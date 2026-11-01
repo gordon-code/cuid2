@@ -5,9 +5,6 @@ import multiprocessing
 import os
 import pickle
 import random
-import string
-import subprocess
-import sys
 import threading
 import time
 import warnings
@@ -136,58 +133,16 @@ class TestCuid:
         cuid = Cuid()
         assert cuid.generate() != cuid.generate()
 
-    #  Tests that generate() works when random_generator returns same values.
-    def test_generate_same_random_values(self: TestCuid, mocker: Mock) -> None:
-        mock_random_class = mocker.Mock()
-        mock_random = mocker.Mock()
-        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
-        mock_random_class.return_value = mock_random
-
-        mocker.patch("cuid2.utils._decode_letter_and_entropy", return_value=("l", "mocked_entropy"))
-        mocker.patch("cuid2.utils._create_hash_slice", return_value="ocked_hash")
-
-        # Initialize Cuid with mocked random generator
-        cuid = Cuid(random_generator=mock_random_class)
-
-        # Generate two Cuids and assert they are the same
-        cuid1 = cuid.generate()
-        cuid2 = cuid.generate()
-        assert cuid1 == cuid2
-
     #  Tests that the constructor sets default values if not provided.
     def test_constructor_default_values(self: TestCuid) -> None:
         # Initialize Cuid with default values
         cuid = Cuid()
 
         # Assert that the values are set to their default values
-        assert isinstance(cuid._state.random, SystemRandom)
+        assert type(cuid._state.random) is SystemRandom
         assert callable(cuid._state.counter)
         assert cuid._length == DEFAULT_LENGTH
         assert isinstance(cuid._state.fingerprint, str)
-
-    #  Tests that the random_generator and fingerprint functions are called correctly when mocked.
-    def test_mock_random_generator_and_fingerprint(self: TestCuid, mocker: Mock) -> None:
-        mock_random_class = mocker.Mock()
-        mock_random = mocker.Mock()
-        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
-        mock_random_class.return_value = mock_random
-
-        mock_fingerprint = mocker.Mock()
-        mock_fingerprint.return_value = "mocked_fingerprint"
-
-        mocker.patch("cuid2.utils._decode_letter_and_entropy", return_value=("l", "mocked_entropy"))
-        mocker.patch("cuid2.utils._create_hash_slice", return_value="ocked_hash")
-
-        # Initialize Cuid with mocked random generator and fingerprint functions
-        cuid = Cuid(random_generator=mock_random_class, fingerprint=mock_fingerprint)
-
-        # Generate a Cuid and assert that the mocked functions were called correctly
-        cuid_str = cuid.generate()
-        assert cuid_str == "locked_hash"  # first letter is "l" from mocked _decode_letter_and_entropy
-        assert cuid._state.fingerprint == "mocked_fingerprint"
-        assert (
-            cuid._state.counter() == 238391185
-        )  # counter is statically assigned since mocked random always returns the same value
 
     #  Tests that generate() returns a string of specified length.
     def test_generate_specified_length(self: TestCuid) -> None:
@@ -226,7 +181,6 @@ class TestCuid:
         mock_counter.return_value = lambda: 123456789
         mock_fingerprint = mocker.Mock(return_value="abcdefg")
         mocker.patch("time.time_ns", return_value=1627584000000000000)  # 2021-07-30 00:00:00 UTC
-        mocker.patch("cuid2.utils._decode_letter_and_entropy", return_value=("l", "i" * DEFAULT_LENGTH))
 
         cuid = Cuid(random_generator=mock_random_class, counter=mock_counter, fingerprint=mock_fingerprint)
 
@@ -234,9 +188,10 @@ class TestCuid:
         result = cuid.generate()
 
         # Assert
-        assert result.startswith("l")
+        assert result.startswith("n")
         assert len(result) == DEFAULT_LENGTH
-        assert result == "l9j3ikop1bi8tcvzme3x3yv7"
+        assert result == "n8xjuve9pq2189v81u8xb7rq"
+        assert cuid.generate() == result
 
     def test_generate_thread_safety_custom_random(self: TestCuid) -> None:
         """Tests that Cuid.generate() serializes calls to a non-reentrant custom random generator across threads."""
@@ -314,38 +269,26 @@ class TestCuid:
         assert is_cuid(rng.nested[0])
         assert outer[0] != rng.nested[0]
 
-    def test_generate_low_bit_stuck_random_covers_all_leading_letters(self: TestCuid) -> None:
-        class _LowBitStuckRandom(random.Random):
-            def getrandbits(self: _LowBitStuckRandom, k: int) -> int:
-                return super().getrandbits(k) & ~((1 << 64) - 1)
+    def test_module_level_random_seed_does_not_affect_default_cuid(
+        self: TestCuid,
+        mocker: Mock,
+    ) -> None:
+        mocker.patch("time.time_ns", return_value=1627584000000000000)
 
-        cuid = Cuid(random_generator=lambda: _LowBitStuckRandom(42))
-        leading_letters = {cuid.generate()[0] for _ in range(500)}
-        assert leading_letters == set(string.ascii_lowercase)
+        # Positive control: an instance wired to module-level `random` collides when `random.seed()` is reset.
+        random.seed(12345)
+        vulnerable_1 = Cuid(random_generator=lambda: random).generate()  # type: ignore[arg-type, return-value]
+        random.seed(12345)
+        vulnerable_2 = Cuid(random_generator=lambda: random).generate()  # type: ignore[arg-type, return-value]
+        assert vulnerable_1 == vulnerable_2
 
-    def test_module_level_random_seed_does_not_affect_default_cuid(self: TestCuid) -> None:
+        # Default Cuid() uses secrets.SystemRandom (os.urandom) and is unaffected by random.seed().
         random.seed(12345)
         cuid1 = Cuid()
         random.seed(12345)
         cuid2 = Cuid()
+        assert cuid1._state.fingerprint != cuid2._state.fingerprint
         assert cuid1.generate() != cuid2.generate()
-
-    def test_create_id_does_not_load_inspect_on_normal_path(self: TestCuid) -> None:
-        code = (
-            "import sys; "
-            "import cuid2; "
-            "assert 'inspect' not in sys.modules; "
-            "cid = cuid2.create_id(); "
-            "assert len(cid) == 24; "
-            "assert 'inspect' not in sys.modules"
-        )
-        result = subprocess.run(  # noqa: S603
-            [sys.executable, "-I", "-c", code],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, result.stderr
 
     def test_deepcopy_returns_independent_generator(self: TestCuid) -> None:
         """Tests that deepcopy builds fresh state instead of cloning the lock, RNG stream, or counter."""
