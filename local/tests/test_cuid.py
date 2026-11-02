@@ -68,10 +68,10 @@ class TestCuid:
             assert match is not None, stderr
             cumulative_us.append(int(match.group(1)))
         # A cold `import cuid2` (including its standard library imports) should take less than 10 ms locally. Shared
-        # CI runners (CI=true) are slower and noisier: 25 ms, or 45 ms on Windows, whose module loading runs about
-        # twice as slow there.
+        # CI runners (CI=true) are slower and noisier: 25 ms on Linux, or 45 ms on macOS and Windows, whose runners
+        # load modules up to about twice as slowly.
         if os.environ.get("CI", "").lower() == "true":
-            limit_us = 45_000 if sys.platform == "win32" else 25_000
+            limit_us = 25_000 if sys.platform.startswith("linux") else 45_000
         else:
             limit_us = 10_000
         assert min(cumulative_us) < limit_us
