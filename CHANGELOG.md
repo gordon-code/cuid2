@@ -10,8 +10,10 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 ### Changed
 
-- Faster ID generation and cold-start imports via single-draw `getrandbits` MSB fixed-point entropy and letter generation (`< 2^-64` bias), leading-digit base36 SHA3-512 hash encoding, reduced lock and reference-count contention on free-threaded Python (`3.14t` and `3.15t`), and deferred `inspect` and `socket` imports.
-- Custom `random_generator` instances must implement `.getrandbits(k)` (typed as `random.Random` instead of `_random.Random`), and seeded `random.Random` generators produce a different sequence of IDs than in `2.2.0`.
+- Faster ID generation and cold-start imports via single-draw `getrandbits` MSB fixed-point entropy and letter generation (`< 2^-64` bias), leading-digit base36 SHA3-512 hash encoding, no per-instance lock for the default `Cuid()` and `create_id()` generator (its `random.SystemRandom` and counter are already thread-safe), reduced reference-count contention on free-threaded Python (`3.14t` and `3.15t`), removed `inspect`, `string`, and `secrets` imports, and a deferred `socket` import.
+- `random_generator` is typed as `random.Random` instead of `_random.Random`, and random bits are drawn with its `.getrandbits(k)`. Generators without `.getrandbits(k)`, or whose class defines `.random()` but not `.getrandbits(k)` (such as `random.Random` subclasses following the custom-generator pattern in the `random` module documentation), keep one `.random()` call per character and produce the same IDs as in 2.2.0.
+
+**Upgrade note:** IDs from a seeded generator that provides `.getrandbits(k)` (for example `functools.partial(random.Random, 42)`) differ from 2.2.0 for the same seed, so update any stored expected IDs in tests. Test doubles that create attributes on demand (such as `unittest.mock.Mock` or `MagicMock`) and stub only `.random` must stub `.getrandbits` instead.
 
 ## [2.2.0] - 2026-10-30
 

@@ -198,7 +198,8 @@ def test_fuzz_create_hash_slice_and_scale_randbits(
     modulus = BASE36_RADIX**length
     draw_bits = modulus.bit_length() + utils._OVERSAMPLE_BITS
     assert 1 << draw_bits >= (1 << 64) * modulus
-    assert 1 << utils._letter_and_entropy_bits(length) >= (1 << 64) * (len(ASCII_LOWERCASE) * modulus)
+    fused_modulus = len(ASCII_LOWERCASE) * modulus
+    assert 1 << (fused_modulus.bit_length() + utils._OVERSAMPLE_BITS) >= (1 << 64) * fused_modulus
 
     high_bits = draw_bits - 64
     x_high = u53 & ((1 << high_bits) - 1)

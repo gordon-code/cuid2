@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 import threading
+from functools import partial
 from hashlib import sha3_512
+from math import floor
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -33,11 +35,29 @@ _HASH_MIN_99_DIGITS: Final[int] = _POWERS_OF_36[98]
 _HASH_MIN_100_DIGITS: Final[int] = _POWERS_OF_36[99]
 
 
+def _uses_random_only(random_generator: Random) -> bool:
+    # Generators without getrandbits(), and random.Random subclasses whose nearest definition is random() rather
+    # than getrandbits() (mirroring random.Random.__init_subclass__), supply their own core generator through
+    # random() alone; they are drawn from with one floor(random() * n) call per character, never through the
+    # inherited getrandbits(), so random() of any resolution keeps its full per-character entropy.
+    if getattr(random_generator, "getrandbits", None) is None:
+        return True
+    for klass in type(random_generator).__mro__:
+        namespace = vars(klass)
+        if "getrandbits" in namespace:
+            return False
+        if "random" in namespace:
+            return True
+    return False
+
+
 def _scale_randbits(bits: int, upper_bound: int, draw_bits: int) -> int:
     return (bits * upper_bound) >> draw_bits
 
 
 def _create_initial_count(random_generator: Random) -> int:  # pyright: ignore[reportUnusedFunction]
+    if _uses_random_only(random_generator):
+        return floor(random_generator.random() * INITIAL_COUNT_MAX)
     return _scale_randbits(
         random_generator.getrandbits(_COUNTER_DRAW_BITS),
         INITIAL_COUNT_MAX,
@@ -54,17 +74,32 @@ def _entropy_from_scaled(scaled: int, length: int) -> str:
     return "".join(chars)
 
 
-def _letter_and_entropy_bits(length: int) -> int:  # pyright: ignore[reportUnusedFunction]
-    return (ASCII_LOWERCASE_LEN * _POWERS_OF_36[length]).bit_length() + _OVERSAMPLE_BITS
+def _letter_via_random(random_generator: Random) -> str:
+    return ASCII_LOWERCASE[floor(random_generator.random() * ASCII_LOWERCASE_LEN)]
 
 
-def _decode_letter_and_entropy(bits: int, length: int) -> tuple[str, str]:  # pyright: ignore[reportUnusedFunction]
+def _entropy_via_random(random_generator: Random, length: int) -> str:
+    return "".join([BASE36_ALPHABET[floor(random_generator.random() * BASE36_RADIX)] for _ in range(length)])
+
+
+def _letter_and_entropy_via_getrandbits(getrandbits: Callable[[int], int], length: int) -> tuple[str, str]:
     entropy_modulus: int = _POWERS_OF_36[length]
     modulus: int = ASCII_LOWERCASE_LEN * entropy_modulus
     draw_bits: int = modulus.bit_length() + _OVERSAMPLE_BITS
-    scaled: int = _scale_randbits(bits, modulus, draw_bits)
-    letter_idx, entropy_scaled = divmod(scaled, entropy_modulus)
+    letter_idx, entropy_scaled = divmod(_scale_randbits(getrandbits(draw_bits), modulus, draw_bits), entropy_modulus)
     return ASCII_LOWERCASE[letter_idx], _entropy_from_scaled(entropy_scaled, length)
+
+
+def _letter_and_entropy_via_random(random_generator: Random, length: int) -> tuple[str, str]:
+    return _letter_via_random(random_generator), _entropy_via_random(random_generator, length)
+
+
+def _letter_and_entropy_source(  # pyright: ignore[reportUnusedFunction]
+    random_generator: Random,
+) -> Callable[[int], tuple[str, str]]:
+    if _uses_random_only(random_generator):
+        return partial(_letter_and_entropy_via_random, random_generator)
+    return partial(_letter_and_entropy_via_getrandbits, random_generator.getrandbits)
 
 
 def _create_hash_slice(data: str, start: int, stop: int) -> str:
@@ -110,7 +145,9 @@ def create_fingerprint(random_generator: Random, fingerprint_data: str | None = 
     Parameters
     ----------
     random_generator : random.Random
-        Random number generator providing `.getrandbits(k)` used to generate fingerprint entropy.
+        Random number generator used to generate fingerprint entropy. Its `.getrandbits(k)` is used; a generator
+        without `.getrandbits(k)`, or whose class defines `.random()` but not `.getrandbits(k)` (such as a
+        `random.Random` subclass overriding only `.random()`), is drawn from with one `.random()` call per character.
     fingerprint_data : str, optional
         An optional parameter that contains data to be included in the fingerprint.
         If it is not provided, the function combines process ID, hostname, and environment variables
@@ -141,7 +178,9 @@ def create_entropy(random_generator: Random, length: int = 4) -> str:
     Parameters
     ----------
     random_generator : random.Random
-        Random number generator providing `.getrandbits(k)` used to generate a random string.
+        Random number generator used to generate a random string. Its `.getrandbits(k)` is used; a generator
+        without `.getrandbits(k)`, or whose class defines `.random()` but not `.getrandbits(k)` (such as a
+        `random.Random` subclass overriding only `.random()`), is drawn from with one `.random()` call per character.
     length : int, default=4
         The length parameter is an integer that specifies the length of the entropy string to be generated.
         The default value is 4, but it can be set to any positive integer value.
@@ -160,6 +199,9 @@ def create_entropy(random_generator: Random, length: int = 4) -> str:
     if length < 1:
         msg = "Cannot create entropy without a length >= 1."
         raise ValueError(msg)
+
+    if _uses_random_only(random_generator):
+        return _entropy_via_random(random_generator, length)
 
     modulus: int = _POWERS_OF_36[length] if length < len(_POWERS_OF_36) else BASE36_RADIX**length
     draw_bits: int = modulus.bit_length() + _OVERSAMPLE_BITS
@@ -195,13 +237,17 @@ def create_letter(random_generator: Random) -> str:
     Parameters
     ----------
     random_generator : random.Random
-        Random number generator providing `.getrandbits(k)` used to generate a random letter.
+        Random number generator used to generate a random letter. Its `.getrandbits(k)` is used; a generator
+        without `.getrandbits(k)`, or whose class defines `.random()` but not `.getrandbits(k)` (such as a
+        `random.Random` subclass overriding only `.random()`), is drawn from with one `.random()` call.
 
     Returns
     -------
     str
         a randomly generated lowercase letter from the English alphabet.
     """
+    if _uses_random_only(random_generator):
+        return _letter_via_random(random_generator)
     return ASCII_LOWERCASE[
         _scale_randbits(
             random_generator.getrandbits(_LETTER_DRAW_BITS),
