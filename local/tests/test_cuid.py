@@ -67,8 +67,10 @@ class TestCuid:
             match = pattern.search(stderr)
             assert match is not None, stderr
             cumulative_us.append(int(match.group(1)))
-        # A cold `import cuid2` (including its standard library imports) should take less than 20 ms
-        assert min(cumulative_us) < 20_000
+        # A cold `import cuid2` (including its standard library imports) should take less than 20 ms, or 40 ms on
+        # Windows, whose interpreter startup and module loading run about twice as slow on CI runners
+        limit_us = 40_000 if sys.platform == "win32" else 20_000
+        assert min(cumulative_us) < limit_us
 
     #  Tests that generate() returns a string of length DEFAULT_LENGTH.
     def test_generate_default_length(self: TestCuid) -> None:
