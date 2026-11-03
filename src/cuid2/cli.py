@@ -15,9 +15,9 @@ from cuid2.utils import BIG_LENGTH, DEFAULT_LENGTH, MAXIMUM_LENGTH, MIN_LENGTH
 __all__ = ["main"]
 
 if TYPE_CHECKING:
-    from _random import Random
     from argparse import Namespace
     from collections.abc import Iterable, Iterator, Sequence
+    from random import Random
 
 _SLUG_LENGTH: int = 5
 

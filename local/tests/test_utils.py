@@ -1,18 +1,53 @@
 from __future__ import annotations
 
+import math
 import os
+import random
 import string
 import threading
 import time
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
 
-from cuid2 import utils
+from cuid2 import Cuid, utils
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from unittest.mock import Mock
+
+
+class _LowBitStuckRandom(random.Random):
+    """Test PRNG whose lowest 64 bits are permanently stuck at zero."""
+
+    def getrandbits(self: _LowBitStuckRandom, k: int) -> int:
+        return super().getrandbits(k) & ~((1 << 64) - 1)
+
+
+class _RandomOnlyRandom(random.Random):
+    """xorshift64 core generator plugged in the way the `random` docs describe: random() and state, no getrandbits.
+
+    Its overridden seed() never seeds the inherited Mersenne Twister, so the inherited getrandbits() ignores this
+    generator.
+    """
+
+    def seed(self: _RandomOnlyRandom, a: object = None, version: int = 2) -> None:  # noqa: ARG002
+        self._xorshift = a if isinstance(a, int) and a > 0 else 0x9E3779B97F4A7C15
+
+    def random(self: _RandomOnlyRandom) -> float:
+        x = self._xorshift
+        x ^= (x << 13) & 0xFFFFFFFFFFFFFFFF
+        x ^= x >> 7
+        x ^= (x << 17) & 0xFFFFFFFFFFFFFFFF
+        self._xorshift = x
+        return (x >> 11) / 9007199254740992.0
+
+    def getstate(self: _RandomOnlyRandom) -> tuple[int]:
+        return (self._xorshift,)
+
+    def setstate(self: _RandomOnlyRandom, state: tuple[int]) -> None:  # type: ignore[override]
+        (self._xorshift,) = state
 
 
 class TestBase36Encode:
@@ -62,20 +97,29 @@ class TestCreateLetter:
     #  Tests that create_letter function returns a lowercase letter
     def test_happy_path_create_letter(self: TestCreateLetter, mocker: Mock) -> None:
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
-        assert utils.create_letter(random_generator=mock_random) in string.ascii_lowercase
+        mock_random.getrandbits.return_value = 1 << (utils._LETTER_DRAW_BITS - 1)
+        result = utils.create_letter(random_generator=mock_random)
+        assert result == "n"
+        assert result in string.ascii_lowercase
+        mock_random.getrandbits.assert_called_once_with(utils._LETTER_DRAW_BITS)
 
     #  Tests that create_letter function returns a lowercase letter when random_generator returns 0
     def test_edge_case_create_letter_zero(self: TestCreateLetter, mocker: Mock) -> None:
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0
-        assert utils.create_letter(random_generator=mock_random) in string.ascii_lowercase
+        mock_random.getrandbits.return_value = 0
+        result = utils.create_letter(random_generator=mock_random)
+        assert result == "a"
+        assert result in string.ascii_lowercase
+        mock_random.getrandbits.assert_called_once_with(utils._LETTER_DRAW_BITS)
 
-    #  Tests that create_letter function returns a lowercase letter when random_generator returns 1
+    #  Tests that create_letter function returns a lowercase letter when random_generator returns max bits
     def test_edge_case_create_letter_one(self: TestCreateLetter, mocker: Mock) -> None:
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.999
-        assert utils.create_letter(random_generator=mock_random) in string.ascii_lowercase
+        mock_random.getrandbits.return_value = (1 << utils._LETTER_DRAW_BITS) - 1
+        result = utils.create_letter(random_generator=mock_random)
+        assert result == "z"
+        assert result in string.ascii_lowercase
+        mock_random.getrandbits.assert_called_once_with(utils._LETTER_DRAW_BITS)
 
 
 class TestCreateHash:
@@ -136,94 +180,104 @@ class TestCreateEntropy:
     def test_create_entropy_happy(self: TestCreateEntropy, mocker: Mock) -> None:
         # Happy path test
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         result = utils.create_entropy(mock_random, length=4)
         assert len(result) == 4
         assert all(c in string.digits + string.ascii_lowercase for c in result)
+        assert mock_random.getrandbits.call_count == 1
 
     #  Tests that create_entropy defaults to length 4 when length is omitted
     def test_create_entropy_default_length(self: TestCreateEntropy, mocker: Mock) -> None:
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         result = utils.create_entropy(mock_random)
         assert len(result) == 4
         assert all(c in string.digits + string.ascii_lowercase for c in result)
+        assert mock_random.getrandbits.call_count == 1
 
     #  Tests that create_entropy raises a ValueError when given a valid instance of Random and a length of 0
     def test_create_entropy_zero_length(self: TestCreateEntropy, mocker: Mock) -> None:
         # Edge case test with length = 0
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         with pytest.raises(ValueError, match=r"Cannot create entropy without a length >= 1\."):
             utils.create_entropy(mock_random, length=0)
+        assert mock_random.getrandbits.call_count == 0
 
     #  Tests that create_entropy raises a ValueError when given a valid instance of Random and a negative length
     def test_create_entropy_negative_length(self: TestCreateEntropy, mocker: Mock) -> None:
         # Edge case test with negative length
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         with pytest.raises(ValueError, match=r"Cannot create entropy without a length >= 1\."):
             utils.create_entropy(mock_random, length=-1)
+        assert mock_random.getrandbits.call_count == 0
 
-    #  Tests that create_entropy raises a TypeError when given an invalid instance of Random
+    #  Tests that create_entropy raises an AttributeError when given an invalid instance of Random
     def test_create_entropy_invalid_random_generator(self: TestCreateEntropy) -> None:
         # Edge case test with invalid random generator
         with pytest.raises(AttributeError):
             utils.create_entropy("not a random generator")  # type: ignore[arg-type]
 
     #  Tests that create_entropy returns a string of expected length when given a
-    #  valid instance of Random and a length equal to the maximum possible length (36)
+    #  valid instance of Random and a length of 36 (one character per base36 digit)
     def test_create_entropy_length_max(self: TestCreateEntropy, mocker: Mock) -> None:
-        # Happy path test with length = maximum possible length (36)
+        # Happy path test with length = 36
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         result = utils.create_entropy(mock_random, length=36)
         assert len(result) == 36
         assert all(c in string.digits + string.ascii_lowercase for c in result)
+        assert mock_random.getrandbits.call_count == 1
 
     #  Tests that create_entropy returns a string of length 1 when given a valid instance of Random and a length of 1
     def test_create_entropy_length_one(self: TestCreateEntropy, mocker: Mock) -> None:
         # Happy path test with length = 1
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         result = utils.create_entropy(mock_random, length=1)
         assert len(result) == 1
         assert all(c in string.digits + string.ascii_lowercase for c in result)
+        assert mock_random.getrandbits.call_count == 1
 
     #  Tests that create_entropy returns a string of expected length when given a valid instance of
-    #  Random and a length greater than the maximum possible length (36)
+    #  Random and a length greater than len(_POWERS_OF_36) - 1 (100)
     def test_create_entropy_length_greater_than_max(self: TestCreateEntropy, mocker: Mock) -> None:
-        # Edge case test with length > maximum possible length (36)
+        # Edge case test with length > 100 so both arms of length < len(_POWERS_OF_36) are covered
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
-        result = utils.create_entropy(mock_random, length=40)
-        assert len(result) == 40
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
+        result = utils.create_entropy(mock_random, length=101)
+        assert len(result) == 101
         assert all(c in string.digits + string.ascii_lowercase for c in result)
+        assert mock_random.getrandbits.call_count == 1
 
     #  Tests that create_entropy returns a string of expected length when given a valid instance of
-    #  Random and a length between 1 and the maximum possible length (36)
+    #  Random and a length of 10
     def test_create_entropy_length_between_1_and_max(self: TestCreateEntropy, mocker: Mock) -> None:
-        # Happy path test with length between 1 and maximum possible length (36)
+        # Happy path test with length = 10
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         result = utils.create_entropy(mock_random, length=10)
         assert len(result) == 10
         assert all(c in string.digits + string.ascii_lowercase for c in result)
+        assert mock_random.getrandbits.call_count == 1
 
     #  Tests that create_entropy indexes BASE36_ALPHABET directly without calling base36_encode
     def test_create_entropy_does_not_call_base36_encode(self: TestCreateEntropy, mocker: Mock) -> None:
         spy = mocker.spy(utils, "base36_encode")
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        draw_bits = (36**4).bit_length() + 64
+        mock_random.getrandbits.return_value = ((int("iiii", 36) << draw_bits) + 36**4 - 1) // 36**4
         assert utils.create_entropy(mock_random, length=4) == "iiii"
         assert spy.call_count == 0
+        assert mock_random.getrandbits.call_count == 1
 
 
 class TestCreateFingerprint:
     #  Tests that create_fingerprint returns a string of length BIG_LENGTH when valid fingerprint data is provided
     def test_create_fingerprint_with_valid_data(self: TestCreateFingerprint, mocker: Mock) -> None:
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         fingerprint_data = "test_data"
         expected_length = utils.BIG_LENGTH
 
@@ -234,7 +288,7 @@ class TestCreateFingerprint:
     #  Tests that create_fingerprint generates valid fingerprint data when no fingerprint data is provided
     def test_create_fingerprint_with_empty_fingerprint_data(self: TestCreateFingerprint, mocker: Mock) -> None:
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         expected_length = utils.BIG_LENGTH
 
         result = utils.create_fingerprint(random_generator=mock_random)
@@ -244,7 +298,7 @@ class TestCreateFingerprint:
     #  Tests that create_fingerprint generates valid fingerprint data when the hostname is empty
     def test_create_fingerprint_with_empty_hostname(self: TestCreateFingerprint, mocker: Mock) -> None:
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         mocker.patch("socket.gethostname", return_value="")
         expected_length = utils.BIG_LENGTH
 
@@ -255,7 +309,7 @@ class TestCreateFingerprint:
     #  Tests that create_fingerprint generates valid fingerprint data when the env variables are empty
     def test_create_fingerprint_with_empty_env_variables(self: TestCreateFingerprint, mocker: Mock) -> None:
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         mocker.patch.dict(os.environ, {})
         expected_length = utils.BIG_LENGTH
 
@@ -266,7 +320,8 @@ class TestCreateFingerprint:
     #  Tests that create_fingerprint ignores invalid data types are provided as input
     def test_create_fingerprint_with_invalid_data_types(self: TestCreateFingerprint, mocker: Mock) -> None:
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        draw_bits = (36**32).bit_length() + 64
+        mock_random.getrandbits.return_value = ((int("i" * 32, 36) << draw_bits) + 36**32 - 1) // 36**32
         non_string_data: int = 123
         fingerprint = utils.create_fingerprint(
             random_generator=mock_random,
@@ -297,7 +352,7 @@ class TestCreateFingerprint:
         mocker: Mock,
     ) -> None:
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         # Mock os.getpid() and socket.gethostname() to return empty strings
         mocker.patch("os.getpid", return_value="")
         mocker.patch("socket.gethostname", return_value="")
@@ -446,3 +501,156 @@ class TestCreateCounter:
         assert not thread.is_alive(), "re-entrant counter call deadlocked on the counter lock"
         assert len(outer) == 1
         assert nested[0] >= 1
+
+
+class TestFixedPointScalingAndHashSlice:
+    @pytest.mark.parametrize("modulus", [26, 36, utils.INITIAL_COUNT_MAX, 36**24, 26 * 36**24])
+    def test_scale_randbits_endpoints_and_midpoint(
+        self: TestFixedPointScalingAndHashSlice,
+        modulus: int,
+    ) -> None:
+        k = modulus.bit_length() + utils._OVERSAMPLE_BITS
+        assert 1 << k >= (1 << 64) * modulus
+        assert utils._scale_randbits(0, modulus, k) == 0
+        assert utils._scale_randbits(1 << (k - 1), modulus, k) == modulus // 2
+        assert utils._scale_randbits((1 << k) - 1, modulus, k) == modulus - 1
+
+    def test_decode_letter_and_entropy_endpoints(self: TestFixedPointScalingAndHashSlice) -> None:
+        k_fused = (len(utils.ASCII_LOWERCASE) * 36**24).bit_length() + utils._OVERSAMPLE_BITS
+
+        def decode_draw(bits: int) -> tuple[str, str]:
+            return utils._letter_and_entropy_via_getrandbits(lambda k: bits if k == k_fused else -1, 24)
+
+        assert decode_draw(0) == ("a", "0" * 24)
+        assert decode_draw(1 << (k_fused - 1))[0] == "n"
+        assert decode_draw((1 << k_fused) - 1) == ("z", "z" * 24)
+
+    def test_low_bit_stuck_random_immunity(self: TestFixedPointScalingAndHashSlice) -> None:
+        rng = _LowBitStuckRandom(42)
+        assert rng.getrandbits(utils._LETTER_DRAW_BITS) % 4 == 0
+
+        assert {utils.create_letter(rng) for _ in range(500)} == set(utils.ASCII_LOWERCASE)
+
+        rng_entropy = _LowBitStuckRandom(42)
+        entropy_draws = [utils.create_entropy(rng_entropy, 24) for _ in range(500)]
+        for position in range(24):
+            assert {draw[position] for draw in entropy_draws} == set(utils.BASE36_ALPHABET), position
+
+        rng_counter = _LowBitStuckRandom(42)
+        assert {utils._create_initial_count(rng_counter) % 2 for _ in range(500)} == {0, 1}
+
+        cuid = Cuid(random_generator=lambda: _LowBitStuckRandom(42))
+        assert {cuid.generate()[0] for _ in range(500)} == set(utils.ASCII_LOWERCASE)
+
+    @pytest.mark.parametrize("boundary_int", [0, 36**98 - 1, 36**98, 36**99, (1 << 512) - 1])
+    @pytest.mark.parametrize("length", [1, utils.BIG_LENGTH, utils.MAXIMUM_LENGTH])
+    def test_create_hash_slice_branches(
+        self: TestFixedPointScalingAndHashSlice,
+        mocker: Mock,
+        boundary_int: int,
+        length: int,
+    ) -> None:
+        mock_hash = mocker.Mock()
+        mock_hash.digest.return_value = boundary_int.to_bytes(64, byteorder="big")
+        mocker.patch("cuid2.utils.sha3_512", return_value=mock_hash)
+
+        full_hash = utils.create_hash("boundary")
+        assert utils._create_hash_slice("boundary", 0, length) == full_hash[:length]
+        assert utils._create_hash_slice("boundary", 1, length) == full_hash[1:length]
+
+
+class _LowResolutionRandom(random.Random):
+    """random()-only generator whose floats have 8 bits of resolution (a valid, if coarse, random() contract)."""
+
+    def random(self: _LowResolutionRandom) -> float:
+        return math.floor(super().random() * 256) / 256
+
+
+def _per_character_letter(draw: Callable[[], float]) -> str:
+    """Reference letter draw: one floor(random() * 26) call."""
+    return utils.ASCII_LOWERCASE[math.floor(draw() * len(utils.ASCII_LOWERCASE))]
+
+
+def _per_character_salt(draw: Callable[[], float], length: int) -> str:
+    """Reference salt draw: one floor(random() * 36) call per character, in order."""
+    return "".join(utils.BASE36_ALPHABET[math.floor(draw() * utils.BASE36_RADIX)] for _ in range(length))
+
+
+class TestRandomOnlyGenerators:
+    def test_uses_random_only_follows_nearest_definition(self: TestRandomOnlyGenerators, mocker: Mock) -> None:
+        class _InheritsRandomOnly(_RandomOnlyRandom):
+            pass
+
+        class _AddsGetrandbits(_RandomOnlyRandom):
+            def getrandbits(self: _AddsGetrandbits, k: int) -> int:
+                return k
+
+        assert utils._uses_random_only(_RandomOnlyRandom())
+        assert utils._uses_random_only(_InheritsRandomOnly())
+        duck_typed = SimpleNamespace(random=random.Random(1).random)  # noqa: S311
+        assert utils._uses_random_only(duck_typed)  # type: ignore[arg-type]
+        assert utils._uses_random_only(mocker.Mock(spec=["random", "seed"]))
+        assert not utils._uses_random_only(_AddsGetrandbits())
+        assert not utils._uses_random_only(random.Random())  # noqa: S311
+        assert not utils._uses_random_only(random.SystemRandom())
+        assert not utils._uses_random_only(_LowBitStuckRandom())
+        assert not utils._uses_random_only(mocker.Mock())
+
+    def test_mock_with_getrandbits_never_calls_random(self: TestRandomOnlyGenerators, mocker: Mock) -> None:
+        mock_random = mocker.Mock()
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
+        assert len(Cuid(random_generator=lambda: mock_random).generate()) == utils.DEFAULT_LENGTH
+        mock_random.random.assert_not_called()
+
+    @pytest.mark.parametrize("rng_type", [_RandomOnlyRandom, _LowResolutionRandom])
+    @pytest.mark.parametrize("length", [1, 4, 24, utils.MAXIMUM_LENGTH])
+    def test_random_only_draws_match_per_character_reference(
+        self: TestRandomOnlyGenerators,
+        rng_type: type[random.Random],
+        length: int,
+    ) -> None:
+        for seed in range(1, 51):
+            reference = rng_type(seed).random
+            expected = (_per_character_letter(reference), _per_character_salt(reference, length))
+            assert utils._letter_and_entropy_via_random(rng_type(seed), length) == expected
+
+            assert utils.create_letter(rng_type(seed)) == _per_character_letter(rng_type(seed).random)
+            assert utils.create_entropy(rng_type(seed), length) == _per_character_salt(rng_type(seed).random, length)
+            expected_count = math.floor(rng_type(seed).random() * utils.INITIAL_COUNT_MAX)
+            assert utils._create_initial_count(rng_type(seed)) == expected_count
+
+    def test_out_of_range_random_fails_or_wraps_per_character(self: TestRandomOnlyGenerators, mocker: Mock) -> None:
+        # 1.0 and negative random() values index the alphabet per character: IndexError, or a wrap within that
+        # character only (never a carry or borrow into neighbouring characters).
+        rng = mocker.Mock(spec=["random"])
+        rng.random.side_effect = [0.5, 0.5, 1.0, 0.1, 0.2]  # initial counter, letter, then the salt characters
+        cuid = Cuid(random_generator=lambda: rng, length=4, fingerprint=lambda random_generator: "fp")  # noqa: ARG005
+        with pytest.raises(IndexError):
+            cuid.generate()
+        rng.random.side_effect = [0.0, -0.01, 0.2, 0.3]
+        assert utils._letter_and_entropy_via_random(rng, 3) == ("a", "z7a")
+
+    def test_low_resolution_random_keeps_full_salt_entropy(self: TestRandomOnlyGenerators) -> None:
+        rng = _LowResolutionRandom(3)
+        salts = [utils.create_entropy(rng, 24) for _ in range(2000)]
+        assert len(set(salts)) == len(salts)
+        for position in range(24):
+            assert {salt[position] for salt in salts} == set(utils.BASE36_ALPHABET), position
+
+    def test_cuid_with_random_only_generator_matches_per_character_reference(
+        self: TestRandomOnlyGenerators,
+        mocker: Mock,
+    ) -> None:
+        time_ns = 1627584000000000000
+        mocker.patch("time.time_ns", return_value=time_ns)
+        cuid = Cuid(random_generator=lambda: _RandomOnlyRandom(7), fingerprint=lambda random_generator: "fp")  # noqa: ARG005
+
+        reference = _RandomOnlyRandom(7).random
+        start_count = math.floor(reference() * utils.INITIAL_COUNT_MAX)
+        letter = _per_character_letter(reference)
+        salt = _per_character_salt(reference, 24)
+        hash_input = utils.base36_encode(time_ns) + salt + utils.base36_encode(start_count + 1) + "fp"
+        assert cuid.generate() == letter + utils.create_hash(hash_input)[1:24]
+
+        varied = Cuid(random_generator=_RandomOnlyRandom)
+        assert {varied.generate()[0] for _ in range(500)} == set(utils.ASCII_LOWERCASE)

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import os
 import re
 import threading
@@ -11,9 +10,8 @@ import warnings
 from contextlib import suppress
 from copy import copy, deepcopy
 from functools import partial
-from math import floor
-from secrets import SystemRandom
-from typing import TYPE_CHECKING, ClassVar, Final, NamedTuple, Protocol
+from random import SystemRandom  # secrets.SystemRandom re-exports random.SystemRandom (os.urandom CSPRNG)
+from typing import TYPE_CHECKING, NamedTuple
 
 from cuid2 import utils
 from cuid2.utils import BIG_LENGTH, DEFAULT_LENGTH, INITIAL_COUNT_MAX, MAXIMUM_LENGTH, MIN_LENGTH
@@ -31,8 +29,9 @@ __all__ = [
 ]
 
 if TYPE_CHECKING:
-    from _random import Random
     from collections.abc import Callable
+    from random import Random
+    from typing import ClassVar, Final, Protocol
 
     class FingerprintCallable(Protocol):
         """Protocol for fingerprint generator callables."""
@@ -82,16 +81,11 @@ def _validate_length(length: int) -> None:
         msg = "Length must never exceed 98 characters."
         raise ValueError(msg)
     if length < MIN_LENGTH or length > BIG_LENGTH:
-        stacklevel: int = 1
-        frame = inspect.currentframe()
-        while frame is not None and frame.f_code.co_filename == __file__:
-            stacklevel += 1
-            frame = frame.f_back
         warnings.warn(
             f"Length {length} outside the CUID2 specification range ({MIN_LENGTH}..{BIG_LENGTH}) "
             "is deprecated and will raise ValueError in v3.0.0.",
             DeprecationWarning,
-            stacklevel=stacklevel,
+            stacklevel=3,
         )
 
 
@@ -128,8 +122,9 @@ class _GeneratorState(NamedTuple):
     """Per-process generator state, replaced as a whole when a forked child process first generates an ID."""
 
     pid: int
-    lock: threading.RLock
+    lock: threading.RLock | None
     random: Random
+    draw: Callable[[int], tuple[str, str]]
     counter: Callable[[], int]
     fingerprint: str
 
@@ -165,8 +160,12 @@ class Cuid:
         Parameters
         ----------
         random_generator : Callable[[], "Random"], default=SystemRandom
-            Factory callable returning the random number generator instance. Defaults to `secrets.SystemRandom`.
-            Called again in a forked child process (see Notes).
+            Factory callable returning the random number generator instance. Defaults to `random.SystemRandom`
+            (`os.urandom`). Random bits are drawn with the instance's `.getrandbits(k)`. A generator without
+            `.getrandbits(k)`, or whose class defines `.random()` but not `.getrandbits(k)` (such as a `random.Random`
+            subclass overriding only `.random()`, the custom generator pattern described in the `random` module
+            documentation), is drawn from with one `.random()` call per character. Called again in a forked child
+            process (see Notes).
         counter : Callable[[int], Callable[[], int]], default=utils.create_counter
             The `counter` parameter is a callable that creates a counter returning an incremented value each time it
             is called. The `create_counter` function from the `utils` module is used by default. Called again with a
@@ -192,22 +191,25 @@ class Cuid:
 
         Notes
         -----
-        `generate()` may be called concurrently from multiple threads, including on free-threaded Python. Draws from
-        the random generator and counter are serialized per instance by a re-entrant lock, so a signal handler or
-        finalizer that generates an ID on the same thread does not deadlock.
+        `generate()` may be called concurrently from multiple threads, including on free-threaded Python. When
+        `random_generator` returns a `random.SystemRandom` instance and `counter` is the default, both of which are
+        thread-safe on their own, no instance lock is taken. Otherwise, draws from the random generator and counter
+        are serialized per instance by a re-entrant lock, so a signal handler or finalizer that generates an ID on the
+        same thread does not deadlock.
 
         Each instance records the process ID that built its state. When `generate()` first runs in a different
         process, such as any `os.fork()` child (including pre-fork servers that fork without running Python's fork
-        hooks), it builds a new lock, random generator, counter, and fingerprint once, by calling `random_generator`,
-        `counter`, and `fingerprint` again before generating. If `random_generator` returns the same object as before
-        the fork, its `seed()` method is called to reseed it from OS entropy; if it has no `seed()` method or `seed()`
-        raises `NotImplementedError` or `TypeError`, that generator keeps the parent's stream, and IDs still differ by
-        timestamp and, with the default `fingerprint`, by process ID. Fixed-seed factories (such as
-        `functools.partial(random.Random, 42)`) give every process the same stream and are intended for deterministic
-        single-process tests.
+        hooks), it builds a new random generator, counter, fingerprint, and (when one is used) lock once, by
+        calling `random_generator`, `counter`, and `fingerprint` again before generating. If `random_generator`
+        returns the same object as before the fork, its `seed()` method is called to reseed it from OS entropy; if it
+        has no `seed()` method or `seed()` raises `NotImplementedError` or `TypeError`, that generator keeps the
+        parent's stream, and IDs still differ by timestamp and, with the default `fingerprint`, by process ID.
+        Fixed-seed factories (such as `functools.partial(random.Random, 42)`) give every process the same stream and
+        are intended for deterministic single-process tests.
 
         `copy.deepcopy()` returns an independent generator: the three factories are shared by reference, other
-        attributes are deep-copied, and the lock, random generator, counter, and fingerprint are built anew.
+        attributes are deep-copied, and the random generator, counter, fingerprint, and (when one is used) lock are
+        built anew.
         """
         _validate_length(length)
 
@@ -245,11 +247,19 @@ class Cuid:
         if random_generator is previous_random:
             with suppress(AttributeError, NotImplementedError, TypeError):
                 random_generator.seed()
+        # SystemRandom draws are stateless os.urandom reads and create_counter locks internally, so the defaults
+        # need no instance lock; any other generator or counter may keep unsynchronized state.
+        needs_lock: bool = (
+            type(random_generator) is not SystemRandom or self._counter_factory is not utils.create_counter
+        )
         return _GeneratorState(
             pid=os.getpid(),
-            lock=threading.RLock(),
+            lock=threading.RLock() if needs_lock else None,
             random=random_generator,
-            counter=self._counter_factory(floor(random_generator.random() * INITIAL_COUNT_MAX)),
+            draw=utils._letter_and_entropy_source(random_generator),  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+            counter=self._counter_factory(
+                utils._create_initial_count(random_generator),  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+            ),
             fingerprint=self._fingerprint_factory(random_generator=random_generator),
         )
 
@@ -283,18 +293,28 @@ class Cuid:
         """
         if length is not None:
             _validate_length(length)
-        resolved_length: int = self._length if length is None else length
+        return self._generate(self._length if length is None else length)
 
+    def _generate(self: Cuid, resolved_length: int) -> str:
         state: _GeneratorState = self._current_state()
-        with state.lock:
-            first_letter: str = utils.create_letter(random_generator=state.random)
-            base36_count: str = utils.base36_encode(state.counter())
-            salt: str = utils.create_entropy(length=resolved_length, random_generator=state.random)
+        lock: threading.RLock | None = state.lock
+        if lock is None:
+            first_letter, salt = state.draw(resolved_length)
+            count = state.counter()
+        else:
+            with lock:
+                first_letter, salt = state.draw(resolved_length)
+                count = state.counter()
 
+        base36_count: str = utils.base36_encode(count)
         base36_time: str = utils.base36_encode(time.time_ns())
         hash_input: str = base36_time + salt + base36_count + state.fingerprint
 
-        return first_letter + utils.create_hash(hash_input)[1:resolved_length]
+        return first_letter + utils._create_hash_slice(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+            hash_input,
+            1,
+            resolved_length,
+        )
 
     is_cuid: ClassVar[IsCuidCallable] = staticmethod(is_cuid)
 
@@ -328,6 +348,8 @@ def create_id(length: int | None = None) -> str:
         If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
     """
     global _default_generator  # noqa: PLW0603
+    if length is not None:
+        _validate_length(length)
     generator = _default_generator
     if generator is None:
         with _process_lock(os.getpid()):
@@ -335,7 +357,7 @@ def create_id(length: int | None = None) -> str:
             if generator is None:
                 generator = Cuid()
                 _default_generator = generator
-    return generator.generate(length=length)
+    return generator._generate(DEFAULT_LENGTH if length is None else length)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
 
 
 def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:

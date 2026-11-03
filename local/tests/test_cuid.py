@@ -5,12 +5,14 @@ import multiprocessing
 import os
 import pickle
 import random
+import re
+import subprocess
+import sys
 import threading
 import time
 import warnings
 from functools import partial
-from math import floor
-from secrets import SystemRandom
+from random import SystemRandom
 from timeit import repeat
 from typing import TYPE_CHECKING
 
@@ -27,6 +29,7 @@ from cuid2 import (
     create_id,
     cuid_wrapper,
     is_cuid,
+    utils,
 )
 
 if TYPE_CHECKING:
@@ -47,8 +50,31 @@ class TestCuid:
             repeat=10,
             number=50_000,
         )
-        # 50k iterations of cuid.generate() should take less than 2 seconds
-        assert min(timing_result) < 2
+        # 50k iterations of cuid.generate() should take less than 0.7 seconds
+        assert min(timing_result) < 0.7
+
+    #  Tests that a cold `import cuid2` stays fast (best of 5 fresh interpreters).
+    def test_import_time(self: TestCuid) -> None:
+        pattern = re.compile(r"^import time:\s+\d+ \|\s+(\d+) \| cuid2$", re.MULTILINE)
+        cumulative_us: list[int] = []
+        for _ in range(5):
+            stderr = subprocess.run(
+                [sys.executable, "-I", "-X", "importtime", "-c", "import cuid2"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stderr
+            match = pattern.search(stderr)
+            assert match is not None, stderr
+            cumulative_us.append(int(match.group(1)))
+        # A cold `import cuid2` (including its standard library imports) should take less than 10 ms locally. Shared
+        # CI runners (CI=true) are slower and noisier: 25 ms on Linux, or 45 ms on macOS and Windows, whose runners
+        # load modules up to about twice as slowly.
+        if os.environ.get("CI", "").lower() == "true":
+            limit_us = 25_000 if sys.platform.startswith("linux") else 45_000
+        else:
+            limit_us = 10_000
+        assert min(cumulative_us) < limit_us
 
     #  Tests that generate() returns a string of length DEFAULT_LENGTH.
     def test_generate_default_length(self: TestCuid) -> None:
@@ -133,60 +159,16 @@ class TestCuid:
         cuid = Cuid()
         assert cuid.generate() != cuid.generate()
 
-    #  Tests that generate() works when random_generator returns same values.
-    def test_generate_same_random_values(self: TestCuid, mocker: Mock) -> None:
-        mock_random_class = mocker.Mock()
-        mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
-        mock_random_class.return_value = mock_random
-
-        mocker.patch("cuid2.utils.create_entropy", return_value="mocked_entropy")
-        mocker.patch("cuid2.utils.create_letter", return_value="l")
-        mocker.patch("cuid2.utils.create_hash", return_value="mocked_hash")
-
-        # Initialize Cuid with mocked random generator
-        cuid = Cuid(random_generator=mock_random_class)
-
-        # Generate two Cuids and assert they are the same
-        cuid1 = cuid.generate()
-        cuid2 = cuid.generate()
-        assert cuid1 == cuid2
-
     #  Tests that the constructor sets default values if not provided.
     def test_constructor_default_values(self: TestCuid) -> None:
         # Initialize Cuid with default values
         cuid = Cuid()
 
         # Assert that the values are set to their default values
-        assert isinstance(cuid._state.random, SystemRandom)
+        assert type(cuid._state.random) is SystemRandom
         assert callable(cuid._state.counter)
         assert cuid._length == DEFAULT_LENGTH
         assert isinstance(cuid._state.fingerprint, str)
-
-    #  Tests that the random_generator and fingerprint functions are called correctly when mocked.
-    def test_mock_random_generator_and_fingerprint(self: TestCuid, mocker: Mock) -> None:
-        mock_random_class = mocker.Mock()
-        mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
-        mock_random_class.return_value = mock_random
-
-        mock_fingerprint = mocker.Mock()
-        mock_fingerprint.return_value = "mocked_fingerprint"
-
-        mocker.patch("cuid2.utils.create_entropy", return_value="mocked_entropy")
-        mocker.patch("cuid2.utils.create_letter", return_value="l")
-        mocker.patch("cuid2.utils.create_hash", return_value="mocked_hash")
-
-        # Initialize Cuid with mocked random generator and fingerprint functions
-        cuid = Cuid(random_generator=mock_random_class, fingerprint=mock_fingerprint)
-
-        # Generate a Cuid and assert that the mocked functions were called correctly
-        cuid_str = cuid.generate()
-        assert cuid_str == "locked_hash"  # first letter is "l" from mocked create_letter function
-        assert cuid._state.fingerprint == "mocked_fingerprint"
-        assert (
-            cuid._state.counter() == 238391185
-        )  # counter is statically assigned since mocked random always returns the same value
 
     #  Tests that generate() returns a string of specified length.
     def test_generate_specified_length(self: TestCuid) -> None:
@@ -199,7 +181,7 @@ class TestCuid:
         # Arrange
         mock_random_class = mocker.Mock()
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         mock_random_class.return_value = mock_random
         mock_counter = mocker.Mock()
         mock_fingerprint = mocker.Mock()
@@ -209,7 +191,8 @@ class TestCuid:
 
         # Assert
         assert cuid._state.random == mock_random_class()
-        assert cuid._state.counter == mock_counter(floor(cuid._state.random.random() * INITIAL_COUNT_MAX))
+        mock_counter.assert_called_once_with(INITIAL_COUNT_MAX // 2)
+        assert cuid._state.counter == mock_counter.return_value
         assert cuid._length == DEFAULT_LENGTH
         assert cuid._state.fingerprint == mock_fingerprint(random_generator=cuid._state.random)
 
@@ -218,13 +201,12 @@ class TestCuid:
         # Arrange
         mock_random_class = mocker.Mock()
         mock_random = mocker.Mock()
-        mock_random.random.return_value = 0.5
+        mock_random.getrandbits.side_effect = lambda k: 1 << (k - 1)
         mock_random_class.return_value = mock_random
         mock_counter = mocker.Mock()
         mock_counter.return_value = lambda: 123456789
         mock_fingerprint = mocker.Mock(return_value="abcdefg")
         mocker.patch("time.time_ns", return_value=1627584000000000000)  # 2021-07-30 00:00:00 UTC
-        mocker.patch("cuid2.utils.create_letter", return_value="l")
 
         cuid = Cuid(random_generator=mock_random_class, counter=mock_counter, fingerprint=mock_fingerprint)
 
@@ -232,9 +214,10 @@ class TestCuid:
         result = cuid.generate()
 
         # Assert
-        assert result.startswith("l")
+        assert result.startswith("n")
         assert len(result) == DEFAULT_LENGTH
-        assert result == "l9j3ikop1bi8tcvzme3x3yv7"
+        assert result == "n8xjuve9pq2189v81u8xb7rq"
+        assert cuid.generate() == result
 
     def test_generate_thread_safety_custom_random(self: TestCuid) -> None:
         """Tests that Cuid.generate() serializes calls to a non-reentrant custom random generator across threads."""
@@ -244,14 +227,14 @@ class TestCuid:
                 super().__init__(seed)
                 self._busy = False
 
-            def random(self: _NonReentrantRandom) -> float:
+            def getrandbits(self: _NonReentrantRandom, k: int) -> int:
                 if self._busy:
                     msg = "Concurrent access to non-reentrant random generator"
                     raise RuntimeError(msg)
                 self._busy = True
                 try:
                     time.sleep(0)
-                    return super().random()
+                    return super().getrandbits(k)
                 finally:
                     self._busy = False
 
@@ -291,11 +274,11 @@ class TestCuid:
                 self.entered = False
                 self.nested: list[str] = []
 
-            def random(self: _ReentrantRandom) -> float:
+            def getrandbits(self: _ReentrantRandom, k: int) -> int:
                 if self.cuid is not None and not self.entered:
                     self.entered = True
                     self.nested.append(self.cuid.generate())
-                return super().random()
+                return super().getrandbits(k)
 
         rng = _ReentrantRandom(1)
         cuid = Cuid(random_generator=lambda: rng)
@@ -311,6 +294,87 @@ class TestCuid:
         assert is_cuid(outer[0])
         assert is_cuid(rng.nested[0])
         assert outer[0] != rng.nested[0]
+
+    def test_module_level_random_seed_does_not_affect_default_cuid(
+        self: TestCuid,
+        mocker: Mock,
+    ) -> None:
+        mocker.patch("time.time_ns", return_value=1627584000000000000)
+
+        module_state = random.getstate()
+        try:
+            # Positive control: an instance wired to module-level `random` collides when `random.seed()` is reset.
+            random.seed(12345)
+            vulnerable_1 = Cuid(random_generator=lambda: random).generate()  # type: ignore[arg-type, return-value]
+            random.seed(12345)
+            vulnerable_2 = Cuid(random_generator=lambda: random).generate()  # type: ignore[arg-type, return-value]
+            assert vulnerable_1 == vulnerable_2
+
+            # Default Cuid() uses random.SystemRandom (os.urandom) and is unaffected by random.seed().
+            random.seed(12345)
+            cuid1 = Cuid()
+            random.seed(12345)
+            cuid2 = Cuid()
+            assert cuid1._state.fingerprint != cuid2._state.fingerprint
+            assert cuid1.generate() != cuid2.generate()
+        finally:
+            random.setstate(module_state)
+
+    def test_default_generator_takes_no_instance_lock(self: TestCuid) -> None:
+        """Tests that the thread-safe defaults (SystemRandom, create_counter) skip the per-instance lock."""
+        assert Cuid()._state.lock is None
+        create_id()
+        default_generator = cuid2.generator._default_generator
+        assert default_generator is not None
+        assert default_generator._state.lock is None
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"random_generator": random.Random},
+            {"random_generator": type("_SystemRandomSubclass", (SystemRandom,), {})},
+            {"counter": partial(utils.create_counter)},
+        ],
+        ids=["custom-random", "systemrandom-subclass", "custom-counter"],
+    )
+    def test_custom_generator_or_counter_keeps_instance_lock(self: TestCuid, kwargs: dict[str, Any]) -> None:
+        """Tests that any non-default random generator or counter keeps the re-entrant instance lock."""
+        lock = Cuid(**kwargs)._state.lock
+        assert lock is not None
+        assert type(lock) is type(threading.RLock())
+
+    def test_default_generator_concurrent_ids_are_unique(self: TestCuid) -> None:
+        """Tests that a shared default Cuid() draws distinct, consecutive counter values across threads lock-free."""
+        cuid = Cuid()
+        assert cuid._state.lock is None
+        real_counter = cuid._state.counter
+        counts: list[int] = []
+
+        def recording_counter() -> int:
+            value = real_counter()
+            counts.append(value)
+            return value
+
+        cuid._state = cuid._state._replace(counter=recording_counter)
+        num_threads = 8
+        ids_per_thread = 250
+        barrier = threading.Barrier(num_threads)
+        buckets: list[list[str]] = [[] for _ in range(num_threads)]
+
+        def worker(index: int) -> None:
+            barrier.wait()
+            buckets[index] = [cuid.generate() for _ in range(ids_per_thread)]
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(num_threads)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        generated = [cid for bucket in buckets for cid in bucket]
+        assert len(generated) == num_threads * ids_per_thread
+        assert len(set(generated)) == len(generated)
+        assert sorted(counts) == list(range(min(counts), min(counts) + len(generated)))
 
     def test_deepcopy_returns_independent_generator(self: TestCuid) -> None:
         """Tests that deepcopy builds fresh state instead of cloning the lock, RNG stream, or counter."""
@@ -689,9 +753,11 @@ class TestCreateId:
         invalid_length: int,
         expected_match: str,
     ) -> None:
-        """Tests that create_id() raises ValueError when length is out of bounds."""
+        """Tests that create_id() raises ValueError when length is out of bounds, before building the default."""
+        assert cuid2.generator._default_generator is None
         with pytest.raises(ValueError, match=expected_match):
             create_id(length=invalid_length)
+        assert cuid2.generator._default_generator is None
 
     def test_create_id_concurrent_first_call_singleton(self: TestCreateId, mocker: Mock) -> None:
         """Tests that concurrent first-time create_id() calls initialize _default_generator once."""
@@ -853,7 +919,7 @@ def _fork_child_worker(custom_cuid: Cuid, conn: Connection[Any, Any]) -> None:
 class TestForkSafety:
     def test_generate_rebuilds_state_when_pid_changes(self: TestForkSafety, mocker: Mock) -> None:
         """Tests that generate() replaces the lock, RNG, counter, and fingerprint once per new process ID."""
-        cuid = Cuid()
+        cuid = Cuid(random_generator=random.Random)
         old_state = cuid._state
         assert old_state.pid == os.getpid()
 
@@ -869,6 +935,25 @@ class TestForkSafety:
         assert is_cuid(cuid.generate())
         assert cuid._state is new_state
 
+    def test_default_generator_rebuilds_lock_free_state_when_pid_changes(
+        self: TestForkSafety,
+        mocker: Mock,
+    ) -> None:
+        """Tests that the default Cuid() rebuilds its RNG, counter, and fingerprint per process with no lock."""
+        cuid = Cuid()
+        old_state = cuid._state
+        assert old_state.lock is None
+
+        mocker.patch("os.getpid", return_value=old_state.pid + 1)
+        assert is_cuid(cuid.generate())
+
+        new_state = cuid._state
+        assert new_state.pid == old_state.pid + 1
+        assert new_state.lock is None
+        assert new_state.random is not old_state.random
+        assert new_state.counter is not old_state.counter
+        assert new_state.fingerprint != old_state.fingerprint
+
     def test_pid_change_reseeds_shared_random_and_tolerates_seedless_rng(
         self: TestForkSafety,
         mocker: Mock,
@@ -879,13 +964,17 @@ class TestForkSafety:
         unreseeded_rng = random.Random()  # noqa: S311
         unreseeded_rng.setstate(shared_rng.getstate())
         # Draws made by the rebuild (counter + fingerprint entropy) and by one generate() (letter + salt).
-        for _ in range(1 + BIG_LENGTH + 1 + DEFAULT_LENGTH):
-            _ = unreseeded_rng.random()
+        for draw_bits in (
+            utils._COUNTER_DRAW_BITS,
+            (36**BIG_LENGTH).bit_length() + 64,
+            (26 * 36**DEFAULT_LENGTH).bit_length() + 64,
+        ):
+            _ = unreseeded_rng.getrandbits(draw_bits)
         seed_spy = mocker.spy(shared_rng, "seed")
 
         class _SeedlessRng:
-            def random(self: _SeedlessRng) -> float:
-                return 0.25
+            def getrandbits(self: _SeedlessRng, k: int) -> int:
+                return 1 << (k - 2)
 
         seedless = _SeedlessRng()
         cuid_seedless = Cuid(random_generator=lambda: seedless)  # type: ignore[arg-type, return-value]
@@ -898,7 +987,7 @@ class TestForkSafety:
         assert cuid_shared._state.random is shared_rng
         assert shared_rng.getstate() != unreseeded_rng.getstate()
         assert cuid_seedless._state.pid == os.getpid()
-        assert cuid_seedless._state.random.random() == 0.25
+        assert cuid_seedless._state.random.getrandbits(4) == 4
 
     def test_rebuild_failure_propagates_without_affecting_other_instances(
         self: TestForkSafety,
@@ -936,8 +1025,9 @@ class TestForkSafety:
     ) -> None:
         """Tests that a new process never waits on instance or default-generator locks held at fork time."""
         monkeypatch.setattr(cuid2.generator, "_default_generator", None)
-        cuid = Cuid()
+        cuid = Cuid(random_generator=random.Random)
         inherited_instance_lock = cuid._state.lock
+        assert inherited_instance_lock is not None
         inherited_process_lock = cuid2.generator._process_lock(os.getpid())
         child_pid = os.getpid() + 1
         holding = threading.Event()
@@ -1035,12 +1125,14 @@ class TestForkSafety:
         shared_rng = random.Random(12345)  # noqa: S311
         custom_cuid = Cuid(random_generator=lambda: shared_rng)
         parent_fingerprint = custom_cuid._state.fingerprint
+        inherited_instance_lock = custom_cuid._state.lock
+        assert inherited_instance_lock is not None
         inherited_process_lock = cuid2.generator._process_lock(os.getpid())
         holding = threading.Event()
         release = threading.Event()
 
         def hold_locks() -> None:
-            with custom_cuid._state.lock, inherited_process_lock:
+            with inherited_instance_lock, inherited_process_lock:
                 holding.set()
                 release.wait()
 
