@@ -38,7 +38,7 @@ git checkout -b my-new-feature
 
 All contributions must meet the following standards (configured in [`pyproject.toml`](pyproject.toml) and [`prek.toml`](prek.toml)):
 
-- **Python compatibility & dependencies:** Code must support Python `>=3.10` (`3.10`–`3.15`) and maintain **zero runtime dependencies**.
+- **Python compatibility & dependencies:** Code must support Python `>=3.11` (`3.11`–`3.15`) and maintain **zero runtime dependencies**.
 - **Code style & formatting ([PEP 8](https://peps.python.org/pep-0008/) / [`ruff`](https://docs.astral.sh/ruff/)):** Source and test files are formatted with `ruff format` and linted with `ruff check` (`select = ["ALL"]`, 120-character maximum line length, `from __future__ import annotations` in every module, and `isort` import ordering).
 - **Docstrings ([NumPy docstring standard](https://numpydoc.readthedocs.io/en/latest/format.html)):** All public modules, classes, and functions require NumPy-style docstrings (`[tool.ruff.lint.pydocstyle] convention = "numpy"`).
 - **Static typing ([PEP 484](https://peps.python.org/pep-0484/) / [PEP 604](https://peps.python.org/pep-0604/)):** All code must be fully type-annotated and pass `mypy --strict`, `pyright` (`strict = ["src"]`), and 100% public symbol type completeness via `pyright --verifytypes cuid2 --ignoreexternal`.

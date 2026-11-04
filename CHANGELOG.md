@@ -8,6 +8,10 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 ## [Unreleased]
 
+### Removed
+
+- Python 3.10 support (`Requires-Python: >=3.11`); Python 3.10 reached end of life on 2026-10-01. `pip` and `uv` on Python 3.10 keep resolving the last compatible release, 2.2.1.
+
 ## [2.2.1] - 2026-11-03
 
 ### Changed
