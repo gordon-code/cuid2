@@ -25,6 +25,13 @@ hooks = [
 ]
 
 [[repos]]
+repo = "https://github.com/betterleaks/betterleaks"
+rev = "81aff7a638638aae3a659845d089043e1d8fe9ac" # v1.9.0
+hooks = [
+  { id = "betterleaks", name = "Betterleaks secret scan", entry = "betterleaks dir --no-banner --redact --verbose --confidence medium", pass_filenames = true, stages = ["pre-commit", "pre-push"], priority = 0 },
+]
+
+[[repos]]
 repo = "local"
 hooks = [
   {
