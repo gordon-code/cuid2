@@ -8,6 +8,8 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-11-03
+
 ### Changed
 
 - Faster ID generation and cold-start imports via single-draw `getrandbits` MSB fixed-point entropy and letter generation (`< 2^-64` bias), leading-digit base36 SHA3-512 hash encoding, no per-instance lock for the default `Cuid()` and `create_id()` generator (its `random.SystemRandom` and counter are already thread-safe), reduced reference-count contention on free-threaded Python (`3.14t` and `3.15t`), removed `inspect`, `string`, and `secrets` imports, and a deferred `socket` import.
@@ -103,7 +105,8 @@ Spans 49 commits since 2.0.1 over 2.5 years; the Python 3.8 drop (#24, merged 20
 - First release from this repository, refactored to the latest CUID2 spec (`1342a13`).
 - Internal: GitHub Actions workflow updates.
 
-[Unreleased]: https://github.com/gordon-code/cuid2/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/gordon-code/cuid2/compare/v2.2.1...HEAD
+[2.2.1]: https://github.com/gordon-code/cuid2/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/gordon-code/cuid2/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/gordon-code/cuid2/compare/v2.0.4...v2.1.0
 [2.0.4]: https://github.com/gordon-code/cuid2/compare/v2.0.3...v2.0.4
