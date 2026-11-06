@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Next generation GUIDs. Collision-resistant ids optimized for horizontal scaling and performance."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 classifiers = [
@@ -18,7 +18,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -50,12 +49,11 @@ lint = [
     "prek==0.5.7",
     "ruff==0.17.0",
     "rumdl==0.3.0",
-    "zizmor==1.31.1; python_version >= '3.11'",
+    "zizmor==1.31.1",
 ]
 test = [
     "coverage[toml]==7.16.2",
-    "hypothesis==6.168.5; python_version < '3.11'",
-    "hypothesis==6.170.5; python_version >= '3.11'",
+    "hypothesis==6.170.5",
     "keepachangelog==2.0.0",
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
@@ -82,7 +80,7 @@ exclude = ["hack"]
 [tool.ruff]
 line-length = 120
 src = ["src"]
-target-version = "py310"
+target-version = "py311"
 cache-dir = "local/.ruff_cache"
 extend-exclude = ["hack"]
 force-exclude = true
@@ -152,6 +150,7 @@ exclude_also = [
 cache_dir = "local/.mypy_cache"
 files = ["."]
 exclude = ["^build/", "^dist/", "^hack/"]
+python_version = "3.11"
 strict = true
 
 [[tool.mypy.overrides]]
@@ -160,4 +159,5 @@ ignore_missing_imports = true
 
 [tool.pyright]
 exclude = ["build", "dist", "hack"]
+pythonVersion = "3.11"
 strict = ["src"]

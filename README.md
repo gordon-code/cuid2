@@ -1,6 +1,6 @@
 # cuid2
 
-[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://pypi.org/project/cuid2/)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://pypi.org/project/cuid2/)
 [![PyPi](https://img.shields.io/pypi/v/cuid2.svg)](https://pypi.org/project/cuid2/)
 [![PyPi](https://img.shields.io/pypi/dm/cuid2.svg)](https://pypi.org/project/cuid2/)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/gordon-code/cuid2/badge)](https://scorecard.dev/viewer/?uri=github.com/gordon-code/cuid2)

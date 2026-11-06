@@ -6,16 +6,12 @@ import argparse
 import re
 import sys
 import tarfile
+import tomllib
 import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import keepachangelog
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
