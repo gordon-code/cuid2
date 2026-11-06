@@ -71,7 +71,7 @@ def _validate_length(length: int) -> None:
 
     Warns
     -----
-    DeprecationWarning
+    FutureWarning
         If `length` is outside the CUID2 specification range (`MIN_LENGTH`..`BIG_LENGTH`, i.e., 2..32).
     """
     if isinstance(length, bool) or length < 1:
@@ -84,7 +84,7 @@ def _validate_length(length: int) -> None:
         warnings.warn(
             f"Length {length} outside the CUID2 specification range ({MIN_LENGTH}..{BIG_LENGTH}) "
             "is deprecated and will raise ValueError in v3.0.0.",
-            DeprecationWarning,
+            FutureWarning,
             stacklevel=3,
         )
 
@@ -174,7 +174,7 @@ class Cuid:
             The length parameter is an integer that determines the maximum length of the generated string.
             It has a default value of DEFAULT_LENGTH (24).
             A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
-            Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a DeprecationWarning.
+            Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a FutureWarning (a ValueError in 3.0.0).
         fingerprint : "FingerprintCallable", default=utils.create_fingerprint
             The "fingerprint" parameter is a callable function that generates a unique identifier. Called again in a
             forked child process; the default includes the child's `os.getpid()`.
@@ -186,7 +186,7 @@ class Cuid:
 
         Warns
         -----
-        DeprecationWarning
+        FutureWarning
             If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
 
         Notes
@@ -272,7 +272,7 @@ class Cuid:
             The length parameter is an optional integer value that specifies the length of the generated string.
             If it is not provided, the default length value provided during class initialization is used.
             A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
-            Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a DeprecationWarning.
+            Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a FutureWarning (a ValueError in 3.0.0).
 
         Returns
         -------
@@ -288,7 +288,7 @@ class Cuid:
 
         Warns
         -----
-        DeprecationWarning
+        FutureWarning
             If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
         """
         if length is not None:
@@ -330,7 +330,7 @@ def create_id(length: int | None = None) -> str:
     length : int, optional
         The optional length of the generated CUID2 string. Defaults to `DEFAULT_LENGTH` (24) when omitted.
         A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
-        Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a DeprecationWarning.
+        Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a FutureWarning (a ValueError in 3.0.0).
 
     Returns
     -------
@@ -344,7 +344,7 @@ def create_id(length: int | None = None) -> str:
 
     Warns
     -----
-    DeprecationWarning
+    FutureWarning
         If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
     """
     global _default_generator  # noqa: PLW0603
@@ -369,7 +369,7 @@ def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
         The length parameter is an integer that determines the maximum length of the generated string.
         It has a default value of DEFAULT_LENGTH (24).
         A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
-        Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a DeprecationWarning.
+        Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a FutureWarning (a ValueError in 3.0.0).
 
     Returns
     -------
@@ -383,7 +383,7 @@ def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
 
     Warns
     -----
-    DeprecationWarning
+    FutureWarning
         If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
     """
     _validate_length(length)

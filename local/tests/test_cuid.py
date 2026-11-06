@@ -112,34 +112,35 @@ class TestCuid:
     #  Tests that generate() works when length parameter is less than 2.
     def test_generate_length_less_than_2(self: TestCuid) -> None:
         cuid = Cuid()
-        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
+        with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range") as record:
             assert len(cuid.generate(length=1)) == 1
         assert record[0].filename == __file__
 
-    #  Tests that lengths outside MIN_LENGTH..BIG_LENGTH (1 and 33..98) emit DeprecationWarning attributed to caller.
+    #  Tests that lengths outside MIN_LENGTH..BIG_LENGTH (1 and 33..98) emit FutureWarning attributed to caller.
     @pytest.mark.parametrize("deprecated_length", [1, BIG_LENGTH + 1, MAXIMUM_LENGTH - 2])
     def test_deprecated_lengths_emit_warning(self: TestCuid, deprecated_length: int) -> None:
-        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
+        with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range") as record:
             cuid_instance = Cuid(length=deprecated_length)
+        assert record[0].category is FutureWarning
         assert record[0].filename == __file__
         assert len(cuid_instance.generate()) == deprecated_length
 
         cuid = Cuid()
-        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
+        with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range") as record:
             generated = cuid.generate(length=deprecated_length)
         assert record[0].filename == __file__
         assert len(generated) == deprecated_length
 
-        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
+        with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range") as record:
             generated_from_create_id = create_id(length=deprecated_length)
         assert record[0].filename == __file__
         assert len(generated_from_create_id) == deprecated_length
 
-    #  Tests that specification boundary lengths MIN_LENGTH (2) and BIG_LENGTH (32) emit no DeprecationWarning.
+    #  Tests that specification boundary lengths MIN_LENGTH (2) and BIG_LENGTH (32) emit no FutureWarning.
     @pytest.mark.parametrize("valid_length", [MIN_LENGTH, BIG_LENGTH])
     def test_spec_boundary_lengths_emit_no_warning(self: TestCuid, valid_length: int) -> None:
         with warnings.catch_warnings():
-            warnings.simplefilter("error", DeprecationWarning)
+            warnings.simplefilter("error", FutureWarning)
             cuid_instance = Cuid(length=valid_length)
             assert len(cuid_instance.generate()) == valid_length
 
@@ -640,7 +641,7 @@ class TestIsCuid:
     @pytest.mark.parametrize("length", [2, 3, 10, DEFAULT_LENGTH, BIG_LENGTH, 50, MAXIMUM_LENGTH - 2, MAXIMUM_LENGTH])
     def test_is_cuid_accepts_generated_ids(self: TestIsCuid, length: int) -> None:
         if length > BIG_LENGTH:
-            with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range"):
+            with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range"):
                 cuid = Cuid(length=length)
         else:
             cuid = Cuid(length=length)
@@ -669,7 +670,7 @@ class TestIsCuid:
     #  Documents a known asymmetry: the generator can emit 1-character ids, but a valid CUID2 needs 2+ characters.
     #  If the generator's minimum length is ever raised to 2, this test should be updated.
     def test_is_cuid_rejects_single_character_generated_id(self: TestIsCuid) -> None:
-        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range"):
+        with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range"):
             generated = Cuid(length=1).generate()
         assert len(generated) == 1
         assert Cuid.is_cuid(generated) is False
@@ -732,8 +733,8 @@ class TestCreateId:
 
     @pytest.mark.parametrize("length", [1, BIG_LENGTH + 1])
     def test_create_id_deprecated_length(self: TestCreateId, length: int) -> None:
-        """Tests that create_id() emits DeprecationWarning attributed to the caller for lengths outside 2..32."""
-        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
+        """Tests that create_id() emits FutureWarning attributed to the caller for lengths outside 2..32."""
+        with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range") as record:
             generated: str = create_id(length=length)
         assert len(generated) == length
         assert record[0].filename == __file__
@@ -872,12 +873,12 @@ class TestCuidWrapper:
 
     @pytest.mark.parametrize("length", [1, BIG_LENGTH + 1, MAXIMUM_LENGTH])
     def test_cuid_wrapper_deprecated_length(self: TestCuidWrapper, length: int) -> None:
-        """Tests that cuid_wrapper emits DeprecationWarning for lengths outside MIN_LENGTH..BIG_LENGTH."""
-        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as record:
+        """Tests that cuid_wrapper emits FutureWarning for lengths outside MIN_LENGTH..BIG_LENGTH."""
+        with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range") as record:
             cuid_func: Callable[[], str] = cuid_wrapper(length=length)
         assert len(record) == 1
         assert record[0].filename == __file__
-        with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range") as call_record:
+        with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range") as call_record:
             generated = cuid_func()
         assert len(call_record) == 1
         assert call_record[0].filename == __file__
