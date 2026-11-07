@@ -265,7 +265,16 @@ def main(args: Sequence[str] | None = None) -> None:
     ------
     SystemExit
         Raised with exit code ``0`` or ``1`` in ``--check``/``--validate`` or
-        ``--version``/``--help`` modes, or exit code ``2`` on invalid arguments.
+        ``--version``/``--help`` modes, or exit code ``2`` on invalid arguments,
+        including a length warning that a warnings filter turned into an error.
+
+    Warns
+    -----
+    FutureWarning
+        When generating IDs (not in ``--check``/``--validate`` mode) with a length
+        outside the CUID2 specification range (``MIN_LENGTH``..``BIG_LENGTH``,
+        i.e., 2..32). The ``cuid2`` console script and ``python -m cuid2`` print it
+        as a ``cuid2: warning: ...`` line.
     """
     parser = _build_parser()
     cli_args = parser.parse_args(args)
@@ -279,17 +288,23 @@ def main(args: Sequence[str] | None = None) -> None:
     resolved_length = target_length if target_length is not None else DEFAULT_LENGTH
     count = cli_args.count if cli_args.count is not None else 1
     try:
-        with warnings.catch_warnings():
-            warnings.showwarning = _show_cli_warning
-            cuid_generator = (
-                Cuid(length=resolved_length)
-                if cli_args.fingerprint is None
-                else Cuid(
-                    length=resolved_length,
-                    fingerprint=partial(_fixed_fingerprint, fingerprint=cli_args.fingerprint),
-                )
+        cuid_generator = (
+            Cuid(length=resolved_length)
+            if cli_args.fingerprint is None
+            else Cuid(
+                length=resolved_length,
+                fingerprint=partial(_fixed_fingerprint, fingerprint=cli_args.fingerprint),
             )
+        )
     except FutureWarning as warning:
         # A warnings filter such as -W error or PYTHONWARNINGS=error turned the length warning into an error.
         parser.error(str(warning))
     _write_lines(f"{cuid_generator.generate()}\n" for _ in range(count))
+
+
+def _console_main(args: Sequence[str] | None = None) -> None:  # pyright: ignore[reportUnusedFunction]
+    # Entry point for the `cuid2` console script and `python -m cuid2`: prints warnings as `cuid2: warning:` lines.
+    # main() leaves warning delivery to its caller, so programmatic use never touches the global showwarning hook.
+    with warnings.catch_warnings():
+        warnings.showwarning = _show_cli_warning
+        main(args)

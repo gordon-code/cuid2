@@ -14,6 +14,7 @@ import cuid2.cli
 import cuid2.generator
 import cuid2.utils
 from cuid2 import DEFAULT_LENGTH, MAXIMUM_LENGTH, create_id, is_cuid
+from cuid2.cli import _console_main as console_main
 from cuid2.cli import main as cli_main
 
 if TYPE_CHECKING:
@@ -43,11 +44,24 @@ class TestCli:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Tests that running python -m cuid2 invokes the CLI entry point."""
+        """Tests that running python -m cuid2 invokes the console entry point, including its warning format."""
         monkeypatch.setattr("sys.argv", ["cuid2", "--slug"])
         runpy.run_module("cuid2", run_name="__main__", alter_sys=True)
         out = capsys.readouterr().out.strip()
         assert is_cuid(out, min_length=5, max_length=5) is True
+
+        monkeypatch.setattr("sys.argv", ["cuid2", "40"])
+        with warnings.catch_warnings():
+            warnings.simplefilter("default", FutureWarning)
+            runpy.run_module("cuid2", run_name="__main__", alter_sys=True)
+        captured = capsys.readouterr()
+        assert captured.err.startswith("cuid2: warning: Length 40 outside the CUID2 specification range")
+        assert is_cuid(captured.out.strip(), min_length=40, max_length=40) is True
+
+    def test_cli_console_script_entry_point(self: TestCli) -> None:
+        """Tests that the installed cuid2 console script targets the warning-formatting entry wrapper."""
+        (entry_point,) = importlib.metadata.entry_points(group="console_scripts", name="cuid2")
+        assert entry_point.load() is cuid2.cli._console_main
 
     @pytest.mark.parametrize("flag", ["-h", "--help"])
     def test_cli_help(self: TestCli, flag: str, capsys: pytest.CaptureFixture[str]) -> None:
@@ -128,7 +142,7 @@ class TestCli:
         """Tests that the CLI emits FutureWarning as a cuid2: warning: line and prints a CUID for boundary lengths."""
         with warnings.catch_warnings():
             warnings.simplefilter("default", FutureWarning)
-            cli_main(args)
+            console_main(args)
         captured = capsys.readouterr()
         assert captured.err == (
             f"cuid2: warning: Length {length} outside the CUID2 specification range (2..32) "
@@ -203,7 +217,7 @@ class TestCli:
 
         with warnings.catch_warnings():
             warnings.simplefilter("default", FutureWarning)
-            cli_main(["-l", "33", "-n", "3"])
+            console_main(["-l", "33", "-n", "3"])
         captured = capsys.readouterr()
         assert captured.err.count("cuid2: warning:") == 1
         assert len(captured.out.splitlines()) == 3
@@ -305,25 +319,41 @@ class TestCli:
             assert exc_info.value.code == 0
             assert capsys.readouterr().out == f"{long_id}: valid\n"
 
-    def test_cli_out_of_spec_warning_without_stderr(
+    @pytest.mark.parametrize(("stderr_case", "expected_writes"), [("missing", 0), ("write_raises", 1)])
+    def test_cli_out_of_spec_warning_without_usable_stderr(
         self: TestCli,
+        stderr_case: str,
+        expected_writes: int,
         monkeypatch: pytest.MonkeyPatch,
+        mocker: Mock,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Tests that a missing sys.stderr drops the out-of-spec warning and still prints the CUID."""
+        """Tests that a missing or failing sys.stderr drops the out-of-spec warning and still prints the CUID."""
+        broken_stderr = io.StringIO()
+        write_mock = mocker.patch.object(broken_stderr, "write", side_effect=BrokenPipeError)
         with monkeypatch.context() as patch, warnings.catch_warnings():
-            patch.setattr("sys.stderr", None)
+            patch.setattr("sys.stderr", None if stderr_case == "missing" else broken_stderr)
             warnings.simplefilter("default", FutureWarning)
-            cli_main(["40"])
+            console_main(["40"])
         assert is_cuid(capsys.readouterr().out.strip(), min_length=40, max_length=40) is True
+        assert write_mock.call_count == expected_writes
+
+    def test_cli_main_leaves_warning_delivery_to_caller(self: TestCli, capsys: pytest.CaptureFixture[str]) -> None:
+        """Tests that main() emits a standard FutureWarning that callers can capture, and writes nothing to stderr."""
+        with pytest.warns(FutureWarning, match=r"Length 40 outside the CUID2 specification range") as record:
+            cli_main(["40"])
+        assert len(record) == 1
+        captured = capsys.readouterr()
+        assert captured.err == ""
+        assert is_cuid(captured.out.strip(), min_length=40, max_length=40) is True
 
     def test_cli_out_of_spec_warning_respects_filters(self: TestCli, capsys: pytest.CaptureFixture[str]) -> None:
-        """Tests that warning filters still apply to the CLI and that its warning output override never leaks."""
+        """Tests that the console entry point honors warning filters and never leaks its warning output override."""
         original = warnings.showwarning
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", FutureWarning)
-            cli_main(["40"])
+            console_main(["40"])
             assert warnings.showwarning is original
         captured = capsys.readouterr()
         assert captured.err == ""
@@ -332,7 +362,7 @@ class TestCli:
         with warnings.catch_warnings():
             warnings.simplefilter("error", FutureWarning)
             with pytest.raises(SystemExit) as exc_info:
-                cli_main(["40"])
+                console_main(["40"])
             assert warnings.showwarning is original
         captured = capsys.readouterr()
         assert exc_info.value.code == 2

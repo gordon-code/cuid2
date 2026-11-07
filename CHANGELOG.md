@@ -10,7 +10,7 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 ### Changed
 
-- Lengths `1` and `33`–`98` now emit `FutureWarning` instead of `DeprecationWarning` (`Cuid`, `generate`, `create_id`, `cuid_wrapper`, and the CLI, which prints it as `cuid2: warning: ...`), so the notice is shown by default before 3.0.0 turns these lengths into a `ValueError`.
+- Lengths `1` and `33`–`98` now emit `FutureWarning` instead of `DeprecationWarning` (`Cuid`, `generate`, `create_id`, `cuid_wrapper`, and the CLI, which prints it as `cuid2: warning: ...` and reports it as a usage error with exit code 2 under a `-W error` or `PYTHONWARNINGS=error` filter), so the notice is shown by default before 3.0.0 turns these lengths into a `ValueError`.
 
 ### Removed
 
