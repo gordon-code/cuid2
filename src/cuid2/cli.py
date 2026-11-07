@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import warnings
 from argparse import SUPPRESS, Action, ArgumentParser, ArgumentTypeError, RawDescriptionHelpFormatter
 from contextlib import suppress
 from functools import partial
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
     from argparse import Namespace
     from collections.abc import Iterable, Iterator, Sequence
     from random import Random
+    from typing import TextIO
 
 _SLUG_LENGTH: int = 5
 
@@ -91,6 +93,23 @@ def _fixed_fingerprint(random_generator: Random, *, fingerprint: str) -> str:
     # Matches @paralleldrive/cuid2 `init({ fingerprint })`, which hashes the string as-is.
     del random_generator
     return fingerprint
+
+
+def _show_cli_warning(  # noqa: PLR0913, PLR0917
+    message: Warning | str,
+    category: type[Warning],
+    filename: str,
+    lineno: int,
+    file: TextIO | None = None,
+    line: str | None = None,
+) -> None:
+    # Prints warnings as one clean `cuid2: warning: <message>` stderr line, without the source path or code line.
+    del category, filename, lineno, line
+    stream = file if file is not None else sys.stderr
+    if stream is None:  # No stderr (pythonw or fd 2 closed at startup): drop the warning like the stdlib does.
+        return
+    with suppress(OSError):
+        stream.write(f"cuid2: warning: {message}\n")
 
 
 def _build_parser() -> ArgumentParser:
@@ -246,7 +265,16 @@ def main(args: Sequence[str] | None = None) -> None:
     ------
     SystemExit
         Raised with exit code ``0`` or ``1`` in ``--check``/``--validate`` or
-        ``--version``/``--help`` modes, or exit code ``2`` on invalid arguments.
+        ``--version``/``--help`` modes, or exit code ``2`` on invalid arguments,
+        including a length warning that a warnings filter turned into an error.
+
+    Warns
+    -----
+    FutureWarning
+        When generating IDs (not in ``--check``/``--validate`` mode) with a length
+        outside the CUID2 specification range (``MIN_LENGTH``..``BIG_LENGTH``,
+        i.e., 2..32). The ``cuid2`` console script and ``python -m cuid2`` print it
+        as a ``cuid2: warning: ...`` line.
     """
     parser = _build_parser()
     cli_args = parser.parse_args(args)
@@ -259,12 +287,24 @@ def main(args: Sequence[str] | None = None) -> None:
 
     resolved_length = target_length if target_length is not None else DEFAULT_LENGTH
     count = cli_args.count if cli_args.count is not None else 1
-    cuid_generator = (
-        Cuid(length=resolved_length)
-        if cli_args.fingerprint is None
-        else Cuid(
-            length=resolved_length,
-            fingerprint=partial(_fixed_fingerprint, fingerprint=cli_args.fingerprint),
+    try:
+        cuid_generator = (
+            Cuid(length=resolved_length)
+            if cli_args.fingerprint is None
+            else Cuid(
+                length=resolved_length,
+                fingerprint=partial(_fixed_fingerprint, fingerprint=cli_args.fingerprint),
+            )
         )
-    )
+    except FutureWarning as warning:
+        # A warnings filter such as -W error or PYTHONWARNINGS=error turned the length warning into an error.
+        parser.error(str(warning))
     _write_lines(f"{cuid_generator.generate()}\n" for _ in range(count))
+
+
+def _console_main(args: Sequence[str] | None = None) -> None:  # pyright: ignore[reportUnusedFunction]
+    # Entry point for the `cuid2` console script and `python -m cuid2`: prints warnings as `cuid2: warning:` lines.
+    # main() leaves warning delivery to its caller, so programmatic use never touches the global showwarning hook.
+    with warnings.catch_warnings():
+        warnings.showwarning = _show_cli_warning
+        main(args)

@@ -138,7 +138,7 @@ def test_fuzz_cuid_spec_lengths(seed: int, length: int) -> None:
     ),
 )
 def test_fuzz_cuid_deprecated_and_invalid_lengths(deprecated_length: int, invalid_length: int) -> None:
-    with pytest.warns(DeprecationWarning, match=r"outside the CUID2 specification range"):
+    with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range"):
         uid: str = create_id(length=deprecated_length)
     assert 1 <= len(uid) <= deprecated_length
 

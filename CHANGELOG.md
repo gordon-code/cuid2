@@ -8,9 +8,15 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 ## [Unreleased]
 
+### Changed
+
+- Lengths `1` and `33`–`98` now emit `FutureWarning` instead of `DeprecationWarning` (`Cuid`, `generate`, `create_id`, `cuid_wrapper`, and the CLI, which prints it as `cuid2: warning: ...` and reports it as a usage error with exit code 2 under a `-W error` or `PYTHONWARNINGS=error` filter), so the notice is shown by default before 3.0.0 turns these lengths into a `ValueError`.
+
 ### Removed
 
 - Python 3.10 support (`Requires-Python: >=3.11`); Python 3.10 reached end of life on 2026-10-01. `pip` and `uv` on Python 3.10 keep resolving the last compatible release, 2.2.1.
+
+**Upgrade note:** `FutureWarning` is not a subclass of `DeprecationWarning`, so `pytest.warns(DeprecationWarning)` checks and `ignore::DeprecationWarning` filters no longer match it; applications calling with these lengths now show the warning in their logs; use a length between 2 and 32 to silence it.
 
 ## [2.2.1] - 2026-11-03
 
