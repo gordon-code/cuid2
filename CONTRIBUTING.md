@@ -77,7 +77,7 @@ uv run pytest --no-cov --hypothesis-profile=deep local/tests/test_fuzz.py
 
 ## Changelog
 
-Pull requests that change behavior, packaging, or documentation that consumers read should add a brief, user-facing entry under `## [Unreleased]` in `CHANGELOG.md` using the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) categories (`Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`). Repository, CI, test, tooling, and dependency hygiene is folded into a single `Internal:` bullet under `### Changed` for the release rather than itemized per PR. Contributor pull requests do not bump the package version; the maintainer bumps the version in the release PR.
+Pull requests that change behavior, packaging, or documentation that consumers read should add a brief, user-facing entry under `## [Unreleased]` in `CHANGELOG.md` using the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) categories (`Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`). Changes that consumers cannot observe (repository, CI, test, tooling, and development-dependency hygiene) get no entry. Contributor pull requests do not bump the package version; the maintainer bumps the version in the release PR.
 
 To cut a release:
 
