@@ -204,7 +204,7 @@ Intro paragraph before categories.
             == 0
         )
         assert notes_out.read_text(encoding="utf-8").startswith("### ")
-        assert gh_out.read_text(encoding="utf-8") == "version=2.2.1\n"
+        assert gh_out.read_text(encoding="utf-8") == "version=2.3.0\n"
 
         version = read_project_version(DEFAULT_PYPROJECT_PATH)
         _build_wheel(tmp_path / f"cuid2-{version}-py3-none-any.whl", expected_wheel_members(version))

@@ -8,9 +8,12 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-07
+
 ### Changed
 
 - Lengths `1` and `33`–`98` now emit `FutureWarning` instead of `DeprecationWarning` (`Cuid`, `generate`, `create_id`, `cuid_wrapper`, and the CLI, which prints it as `cuid2: warning: ...` and reports it as a usage error with exit code 2 under a `-W error` or `PYTHONWARNINGS=error` filter), so the notice is shown by default before 3.0.0 turns these lengths into a `ValueError`.
+- Internal: CI, `ruff`, `mypy`, and `pyright` now target Python 3.11, and the lockfile and release tooling drop their Python 3.10 fallbacks.
 
 ### Removed
 
@@ -115,7 +118,8 @@ Spans 49 commits since 2.0.1 over 2.5 years; the Python 3.8 drop (#24, merged 20
 - First release from this repository, refactored to the latest CUID2 spec (`1342a13`).
 - Internal: GitHub Actions workflow updates.
 
-[Unreleased]: https://github.com/gordon-code/cuid2/compare/v2.2.1...HEAD
+[Unreleased]: https://github.com/gordon-code/cuid2/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/gordon-code/cuid2/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/gordon-code/cuid2/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/gordon-code/cuid2/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/gordon-code/cuid2/compare/v2.0.4...v2.1.0
