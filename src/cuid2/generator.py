@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import operator
 import os
 import re
 import threading
 import time
-import warnings
 from contextlib import suppress
 from copy import copy, deepcopy
 from functools import partial
@@ -14,13 +14,12 @@ from random import SystemRandom  # secrets.SystemRandom re-exports random.System
 from typing import TYPE_CHECKING, NamedTuple
 
 from cuid2 import utils
-from cuid2.utils import BIG_LENGTH, DEFAULT_LENGTH, INITIAL_COUNT_MAX, MAXIMUM_LENGTH, MIN_LENGTH
+from cuid2.utils import BIG_LENGTH, DEFAULT_LENGTH, INITIAL_COUNT_MAX, MIN_LENGTH
 
 __all__ = [
     "BIG_LENGTH",
     "DEFAULT_LENGTH",
     "INITIAL_COUNT_MAX",
-    "MAXIMUM_LENGTH",
     "MIN_LENGTH",
     "Cuid",
     "create_id",
@@ -47,7 +46,7 @@ if TYPE_CHECKING:
             self: IsCuidCallable,
             cuid_str: str,
             min_length: int = MIN_LENGTH,
-            max_length: int = MAXIMUM_LENGTH,
+            max_length: int = BIG_LENGTH,
         ) -> bool:
             """Validate whether a string is a CUID2 identifier within the given length bounds."""
             ...
@@ -67,29 +66,19 @@ def _validate_length(length: int) -> None:
     Raises
     ------
     ValueError
-        If `length` is a boolean, less than 1, or greater than `MAXIMUM_LENGTH` (98).
-
-    Warns
-    -----
-    FutureWarning
-        If `length` is outside the CUID2 specification range (`MIN_LENGTH`..`BIG_LENGTH`, i.e., 2..32).
+        If `length` is a boolean, less than `MIN_LENGTH` (2), or greater than `BIG_LENGTH` (32).
+    TypeError
+        If `length` is not an integer (a float, `Decimal`, `Fraction`, or string, for example).
     """
-    if isinstance(length, bool) or length < 1:
-        msg = "Length must be at least 1 character."
+    if isinstance(length, bool) or operator.index(length) < MIN_LENGTH:
+        msg = f"Length must be at least {MIN_LENGTH} characters."
         raise ValueError(msg)
-    if length > MAXIMUM_LENGTH:
-        msg = "Length must never exceed 98 characters."
+    if length > BIG_LENGTH:
+        msg = f"Length must never exceed {BIG_LENGTH} characters."
         raise ValueError(msg)
-    if length < MIN_LENGTH or length > BIG_LENGTH:
-        warnings.warn(
-            f"Length {length} outside the CUID2 specification range ({MIN_LENGTH}..{BIG_LENGTH}) "
-            "is deprecated and will raise ValueError in v3.0.0.",
-            FutureWarning,
-            stacklevel=3,
-        )
 
 
-def is_cuid(cuid_str: str, min_length: int = MIN_LENGTH, max_length: int = MAXIMUM_LENGTH) -> bool:
+def is_cuid(cuid_str: str, min_length: int = MIN_LENGTH, max_length: int = BIG_LENGTH) -> bool:
     """Validate whether a given string is a valid CUID2 identifier.
 
     Parameters
@@ -99,8 +88,8 @@ def is_cuid(cuid_str: str, min_length: int = MIN_LENGTH, max_length: int = MAXIM
     min_length : int, default=MIN_LENGTH (2)
         The minimum allowed length of the identifier. Values below 2 have no effect, since a valid
         identifier always has a leading letter followed by at least one more character.
-    max_length : int, default=MAXIMUM_LENGTH (98)
-        The maximum allowed length of the identifier. Values above `MAXIMUM_LENGTH` are clamped to it.
+    max_length : int, default=BIG_LENGTH (32)
+        The maximum allowed length of the identifier. Values above `BIG_LENGTH` are clamped to it.
 
     Returns
     -------
@@ -108,9 +97,9 @@ def is_cuid(cuid_str: str, min_length: int = MIN_LENGTH, max_length: int = MAXIM
         True if `cuid_str` is a string starting with a lowercase ASCII letter followed by
         lowercase base36 characters and has length between `min_length` and `max_length`
         inclusive; False otherwise. The length bounds can only narrow the range of valid
-        lengths (2 to `MAXIMUM_LENGTH`), never widen it.
+        lengths (2 to `BIG_LENGTH`), never widen it.
     """
-    max_length = min(max_length, MAXIMUM_LENGTH)
+    max_length = min(max_length, BIG_LENGTH)
     return (
         isinstance(cuid_str, str)  # pyright: ignore[reportUnnecessaryIsInstance]
         and min_length <= len(cuid_str) <= max_length
@@ -171,10 +160,10 @@ class Cuid:
             is called. The `create_counter` function from the `utils` module is used by default. Called again with a
             new random starting value in a forked child process.
         length : int, default=DEFAULT_LENGTH (24)
-            The length parameter is an integer that determines the maximum length of the generated string.
+            The length parameter is an integer that determines the length of the generated string.
             It has a default value of DEFAULT_LENGTH (24).
-            A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
-            Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a FutureWarning (a ValueError in 3.0.0).
+            A length value less than `MIN_LENGTH` (2) or greater than `BIG_LENGTH` (32 characters) will raise a
+            ValueError.
         fingerprint : "FingerprintCallable", default=utils.create_fingerprint
             The "fingerprint" parameter is a callable function that generates a unique identifier. Called again in a
             forked child process; the default includes the child's `os.getpid()`.
@@ -182,12 +171,10 @@ class Cuid:
         Raises
         ------
         ValueError
-            If the length parameter is a boolean, less than 1, or greater than `MAXIMUM_LENGTH` (98 characters).
-
-        Warns
-        -----
-        FutureWarning
-            If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
+            If the length parameter is a boolean, less than `MIN_LENGTH` (2), or greater than `BIG_LENGTH` (32
+            characters).
+        TypeError
+            If the length parameter is not an integer.
 
         Notes
         -----
@@ -271,25 +258,23 @@ class Cuid:
         length : int, optional
             The length parameter is an optional integer value that specifies the length of the generated string.
             If it is not provided, the default length value provided during class initialization is used.
-            A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
-            Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a FutureWarning (a ValueError in 3.0.0).
+            A length value less than `MIN_LENGTH` (2) or greater than `BIG_LENGTH` (32 characters) will raise a
+            ValueError.
 
         Returns
         -------
         str
             Starts with a single, random letter, followed by a hash. The hash is generated using a combination of
             the current time in base 36, a random salt, a base 36 counter, and a system fingerprint.
-            The length of the returned string is limited by `length`.
+            The returned string has exactly `length` characters.
 
         Raises
         ------
         ValueError
-            If the length parameter is a boolean, less than 1, or greater than `MAXIMUM_LENGTH` (98 characters).
-
-        Warns
-        -----
-        FutureWarning
-            If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
+            If the length parameter is a boolean, less than `MIN_LENGTH` (2), or greater than `BIG_LENGTH` (32
+            characters).
+        TypeError
+            If the length parameter is not an integer.
         """
         if length is not None:
             _validate_length(length)
@@ -329,8 +314,7 @@ def create_id(length: int | None = None) -> str:
     ----------
     length : int, optional
         The optional length of the generated CUID2 string. Defaults to `DEFAULT_LENGTH` (24) when omitted.
-        A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
-        Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a FutureWarning (a ValueError in 3.0.0).
+        A length value less than `MIN_LENGTH` (2) or greater than `BIG_LENGTH` (32 characters) will raise a ValueError.
 
     Returns
     -------
@@ -340,12 +324,9 @@ def create_id(length: int | None = None) -> str:
     Raises
     ------
     ValueError
-        If the length parameter is a boolean, less than 1, or greater than `MAXIMUM_LENGTH` (98 characters).
-
-    Warns
-    -----
-    FutureWarning
-        If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
+        If the length parameter is a boolean, less than `MIN_LENGTH` (2), or greater than `BIG_LENGTH` (32 characters).
+    TypeError
+        If the length parameter is not an integer.
     """
     global _default_generator  # noqa: PLW0603
     if length is not None:
@@ -366,10 +347,9 @@ def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
     Parameters
     ----------
     length : int, default=DEFAULT_LENGTH (24)
-        The length parameter is an integer that determines the maximum length of the generated string.
+        The length parameter is an integer that determines the length of the generated string.
         It has a default value of DEFAULT_LENGTH (24).
-        A length value less than 1 or greater than `MAXIMUM_LENGTH` (98 characters) will raise a ValueError.
-        Lengths outside `MIN_LENGTH`..`BIG_LENGTH` (2..32) emit a FutureWarning (a ValueError in 3.0.0).
+        A length value less than `MIN_LENGTH` (2) or greater than `BIG_LENGTH` (32 characters) will raise a ValueError.
 
     Returns
     -------
@@ -379,12 +359,9 @@ def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
     Raises
     ------
     ValueError
-        If the length parameter is a boolean, less than 1, or greater than `MAXIMUM_LENGTH` (98 characters).
-
-    Warns
-    -----
-    FutureWarning
-        If the length parameter is outside `MIN_LENGTH`..`BIG_LENGTH` (2..32 characters).
+        If the length parameter is a boolean, less than `MIN_LENGTH` (2), or greater than `BIG_LENGTH` (32 characters).
+    TypeError
+        If the length parameter is not an integer.
     """
     _validate_length(length)
     return partial(create_id, length=length)

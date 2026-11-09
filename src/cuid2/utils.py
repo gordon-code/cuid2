@@ -20,7 +20,6 @@ INITIAL_COUNT_MAX: Final[int] = 476782367
 MIN_LENGTH: Final[int] = 2
 DEFAULT_LENGTH: Final[int] = 24
 BIG_LENGTH: Final[int] = 32
-MAXIMUM_LENGTH: Final[int] = 98
 
 ASCII_LOWERCASE: Final[str] = "abcdefghijklmnopqrstuvwxyz"
 ASCII_LOWERCASE_LEN: Final[int] = len(ASCII_LOWERCASE)
@@ -106,7 +105,9 @@ def _create_hash_slice(data: str, start: int, stop: int) -> str:
     hashed_int: int = int.from_bytes(sha3_512(data.encode()).digest(), byteorder="big")
     raw_start: int = start + 1
     raw_stop: int = stop + 1
-    if hashed_int >= _HASH_MIN_99_DIGITS and stop < MAXIMUM_LENGTH:
+    # Callers pass stop <= BIG_LENGTH. The division fast path is valid only for stop <= 98: with a 99-digit digest and
+    # a larger stop, _POWERS_OF_36[total_digits - raw_stop] would index from the end and return a wrong slice.
+    if hashed_int >= _HASH_MIN_99_DIGITS:
         total_digits: int = 100 if hashed_int >= _HASH_MIN_100_DIGITS else 99
         return base36_encode(hashed_int // _POWERS_OF_36[total_digits - raw_stop])[raw_start:raw_stop]
     return base36_encode(hashed_int)[raw_start:raw_stop]

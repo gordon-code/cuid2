@@ -16,7 +16,6 @@ from cuid2.utils import (
     BASE36_RADIX,
     BIG_LENGTH,
     INITIAL_COUNT_MAX,
-    MAXIMUM_LENGTH,
     MIN_LENGTH,
 )
 
@@ -37,14 +36,14 @@ if TYPE_CHECKING:
 def test_fuzz_is_cuid_arbitrary_strings(candidate: str, min_length: int, max_length: int) -> None:
     expected: bool = (
         len(candidate) >= MIN_LENGTH
-        and min_length <= len(candidate) <= min(max_length, MAXIMUM_LENGTH)
+        and min_length <= len(candidate) <= min(max_length, BIG_LENGTH)
         and candidate[0] in ASCII_LOWERCASE
         and all(ch in BASE36_ALPHABET for ch in candidate[1:])
     )
     assert is_cuid(candidate, min_length=min_length, max_length=max_length) is expected
 
 
-@given(candidate=st.from_regex(r"\A[a-z][0-9a-z]{1,97}\Z", fullmatch=True))
+@given(candidate=st.from_regex(r"\A[a-z][0-9a-z]{1,31}\Z", fullmatch=True))
 def test_fuzz_is_cuid_valid_regex(candidate: str) -> None:
     assert is_cuid(candidate) is True
     assert is_cuid(candidate, min_length=len(candidate), max_length=len(candidate)) is True
@@ -93,7 +92,8 @@ def test_fuzz_utils_primitives(
         utils.create_entropy(rng, invalid_entropy_len)
 
     digest: str = utils.create_hash(data)
-    assert 1 <= len(digest) <= MAXIMUM_LENGTH + 1
+    #  A 512-bit SHA3-512 digest has at most 100 base36 digits and create_hash drops the leading digit.
+    assert 1 <= len(digest) <= 99
     assert all(ch in BASE36_ALPHABET for ch in digest)
 
     fingerprint: str = utils.create_fingerprint(rng, data)
@@ -130,47 +130,39 @@ def test_fuzz_cuid_spec_lengths(seed: int, length: int) -> None:
 
 
 @given(
-    deprecated_length=st.one_of(st.just(1), st.integers(BIG_LENGTH + 1, MAXIMUM_LENGTH)),
     invalid_length=st.one_of(
         st.booleans(),
-        st.integers(max_value=0),
-        st.integers(min_value=MAXIMUM_LENGTH + 1, max_value=500),
+        st.integers(max_value=MIN_LENGTH - 1),
+        st.integers(min_value=BIG_LENGTH + 1, max_value=10_000),
     ),
 )
-def test_fuzz_cuid_deprecated_and_invalid_lengths(deprecated_length: int, invalid_length: int) -> None:
-    with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range"):
-        uid: str = create_id(length=deprecated_length)
-    assert 1 <= len(uid) <= deprecated_length
-
+def test_fuzz_cuid_invalid_lengths(invalid_length: int) -> None:
     cuid = Cuid()
-    with pytest.raises(ValueError, match=r"Length must (be at least 1 character|never exceed 98 characters)\."):
+    with pytest.raises(ValueError, match=r"Length must (be at least 2|never exceed 32) characters\."):
         Cuid(length=invalid_length)
-    with pytest.raises(ValueError, match=r"Length must (be at least 1 character|never exceed 98 characters)\."):
+    with pytest.raises(ValueError, match=r"Length must (be at least 2|never exceed 32) characters\."):
         cuid.generate(length=invalid_length)
-    with pytest.raises(ValueError, match=r"Length must (be at least 1 character|never exceed 98 characters)\."):
+    with pytest.raises(ValueError, match=r"Length must (be at least 2|never exceed 32) characters\."):
         create_id(length=invalid_length)
-    with pytest.raises(ValueError, match=r"Length must (be at least 1 character|never exceed 98 characters)\."):
+    with pytest.raises(ValueError, match=r"Length must (be at least 2|never exceed 32) characters\."):
         cuid_wrapper(length=invalid_length)
 
 
 @given(
     digest_int=st.integers(min_value=0, max_value=(1 << 512) - 1),
-    length=st.integers(min_value=1, max_value=MAXIMUM_LENGTH),
+    length=st.integers(min_value=1, max_value=BIG_LENGTH),
 )
 @example(digest_int=0, length=1)
 @example(digest_int=35, length=BIG_LENGTH)
 @example(digest_int=36, length=BIG_LENGTH)
-@example(digest_int=36**97 - 1, length=MAXIMUM_LENGTH)
-@example(digest_int=36**98 - 1, length=MAXIMUM_LENGTH - 1)
+@example(digest_int=36**97 - 1, length=BIG_LENGTH)
+@example(digest_int=36**98 - 1, length=BIG_LENGTH)
 @example(digest_int=36**98, length=1)
-@example(digest_int=36**98, length=MAXIMUM_LENGTH - 1)
-@example(digest_int=36**98, length=MAXIMUM_LENGTH)
-@example(digest_int=36**99 - 1, length=MAXIMUM_LENGTH - 1)
+@example(digest_int=36**98, length=BIG_LENGTH)
+@example(digest_int=36**99 - 1, length=BIG_LENGTH)
 @example(digest_int=36**99, length=1)
-@example(digest_int=36**99, length=MAXIMUM_LENGTH - 1)
-@example(digest_int=36**99, length=MAXIMUM_LENGTH)
-@example(digest_int=(1 << 512) - 1, length=MAXIMUM_LENGTH - 1)
-@example(digest_int=(1 << 512) - 1, length=MAXIMUM_LENGTH)
+@example(digest_int=36**99, length=BIG_LENGTH)
+@example(digest_int=(1 << 512) - 1, length=BIG_LENGTH)
 def test_fuzz_create_hash_slice_arbitrary_digest(digest_int: int, length: int) -> None:
     mock_hash = Mock()
     mock_hash.digest.return_value = digest_int.to_bytes(64, byteorder="big")
@@ -183,7 +175,7 @@ def test_fuzz_create_hash_slice_arbitrary_digest(digest_int: int, length: int) -
 
 @given(
     data=st.text(max_size=200),
-    length=st.integers(min_value=1, max_value=MAXIMUM_LENGTH),
+    length=st.integers(min_value=1, max_value=BIG_LENGTH),
     u53=st.integers(min_value=0, max_value=(1 << 53) - 1),
     dyadic_j=st.integers(min_value=0, max_value=(1 << 20) - 1),
 )
@@ -224,7 +216,7 @@ _FUZZ_TARGETS: tuple[_FuzzTarget, ...] = cast(
         test_fuzz_base36_encode_negative_raises,
         test_fuzz_utils_primitives,
         test_fuzz_cuid_spec_lengths,
-        test_fuzz_cuid_deprecated_and_invalid_lengths,
+        test_fuzz_cuid_invalid_lengths,
         test_fuzz_create_hash_slice_arbitrary_digest,
         test_fuzz_create_hash_slice_and_scale_randbits,
     ),

@@ -8,6 +8,19 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 ## [Unreleased]
 
+### Changed
+
+- `Cuid`, `Cuid.generate`, `create_id`, and `cuid_wrapper` now enforce the CUID2 specification length bounds (`2..32`, i.e., `MIN_LENGTH`..`BIG_LENGTH`) and raise `ValueError` for length `1` and lengths `> 32` (previously a `FutureWarning` in 2.3.0 and `DeprecationWarning` in 2.0.3–2.2.1); the `cuid2` CLI likewise rejects lengths outside `2..32` with exit code 2.
+- `Cuid`, `Cuid.generate`, `create_id`, and `cuid_wrapper` now raise `TypeError` for any non-integer `length` (such as a `float`, `Decimal`, `Fraction`, or `numpy.bool_`) when it is passed. Previously an in-range value such as `10.0` was accepted and failed on the first generated ID, and an out-of-range float such as `0.5` or `100.0` raised `ValueError`. Integer-like values such as `numpy` integers and `IntEnum` members are still accepted.
+- `is_cuid` (and `Cuid.is_cuid` and `cuid2 --check`) now defaults `max_length` to `BIG_LENGTH` (`32`, down from `98`, matching the upstream `@paralleldrive/cuid2` `isCuid` default) and clamps `max_length` to `32`.
+
+### Removed
+
+- `MAXIMUM_LENGTH` (`98`) from `cuid2`, `cuid2.generator`, and `cuid2.utils`; use `BIG_LENGTH` (`32`) for the maximum specification length.
+- Out-of-spec length `FutureWarning` deprecation machinery from the library and CLI.
+
+**Upgrade note:** Callers passing `length=1` or `length > 32` (up to `98`), or importing `MAXIMUM_LENGTH` must either update lengths to the CUID2 specification range (`2..32`) and replace `MAXIMUM_LENGTH` with `BIG_LENGTH` (`32`), or pin `cuid2<3` until ready to migrate. `is_cuid()` does not raise for IDs longer than 32 characters: it returns `False` even when `max_length` is greater than `32`, and `cuid2 --check` exits with code 1 (`cuid2 --check -l N` with `N` greater than `32` exits with code 2), so a service that validates stored legacy IDs would start rejecting them silently; validate those IDs with your own check (for example `re.fullmatch(r"[a-z][0-9a-z]+", s)` plus your own length bound) or pin `cuid2<3`. `Cuid(...)` and `cuid_wrapper(...)` validate `length` when constructed, so an out-of-range length in a module-level declaration (for example a Django model default in `models.py`) now raises `ValueError` at import time. Existing Django migrations that serialize `functools.partial(cuid2.generator.create_id, ...)` with a serialized `'length': N` where `N` is outside `2..32` (search migration files for `create_id`) must be edited to a length in `2..32`, otherwise operations that evaluate the default, such as `AddField` during `migrate` or test-database creation, raise `ValueError`.
+
 ## [2.3.0] - 2026-11-07
 
 ### Changed

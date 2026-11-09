@@ -543,7 +543,7 @@ class TestFixedPointScalingAndHashSlice:
         assert {cuid.generate()[0] for _ in range(500)} == set(utils.ASCII_LOWERCASE)
 
     @pytest.mark.parametrize("boundary_int", [0, 36**98 - 1, 36**98, 36**99, (1 << 512) - 1])
-    @pytest.mark.parametrize("length", [1, utils.BIG_LENGTH, utils.MAXIMUM_LENGTH])
+    @pytest.mark.parametrize("length", [1, utils.BIG_LENGTH])
     def test_create_hash_slice_branches(
         self: TestFixedPointScalingAndHashSlice,
         mocker: Mock,
@@ -603,7 +603,7 @@ class TestRandomOnlyGenerators:
         mock_random.random.assert_not_called()
 
     @pytest.mark.parametrize("rng_type", [_RandomOnlyRandom, _LowResolutionRandom])
-    @pytest.mark.parametrize("length", [1, 4, 24, utils.MAXIMUM_LENGTH])
+    @pytest.mark.parametrize("length", [1, 4, 24, utils.BIG_LENGTH])
     def test_random_only_draws_match_per_character_reference(
         self: TestRandomOnlyGenerators,
         rng_type: type[random.Random],
