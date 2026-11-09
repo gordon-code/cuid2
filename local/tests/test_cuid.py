@@ -10,7 +10,6 @@ import subprocess
 import sys
 import threading
 import time
-import warnings
 from functools import partial
 from random import SystemRandom
 from timeit import repeat
@@ -23,7 +22,6 @@ from cuid2 import (
     BIG_LENGTH,
     DEFAULT_LENGTH,
     INITIAL_COUNT_MAX,
-    MAXIMUM_LENGTH,
     MIN_LENGTH,
     Cuid,
     create_id,
@@ -91,63 +89,46 @@ class TestCuid:
         cuid = Cuid(length=10)
         assert len(cuid.generate(length=None)) == 10
 
-    #  Tests that generate() works when length parameter is really long.
-    def test_generate_really_long_length(self: TestCuid) -> None:
-        for invalid_length in (99, 100):
-            with pytest.raises(ValueError, match=r"Length must never exceed 98 characters\."):
-                Cuid(length=invalid_length)
-            cuid = Cuid()
-            with pytest.raises(ValueError, match=r"Length must never exceed 98 characters\."):
-                cuid.generate(length=invalid_length)
-
-    #  Tests that Cuid and generate() raise ValueError when length is less than 1 or a boolean.
-    @pytest.mark.parametrize("invalid_length", [0, -1, -5, True, False])
-    def test_generate_non_positive_length(self: TestCuid, invalid_length: int) -> None:
-        with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
+    #  Tests that Cuid and generate() raise ValueError when length is greater than BIG_LENGTH (32).
+    @pytest.mark.parametrize("invalid_length", [BIG_LENGTH + 1, 50, 98, 99, 100])
+    def test_generate_really_long_length(self: TestCuid, invalid_length: int) -> None:
+        with pytest.raises(ValueError, match=r"Length must never exceed 32 characters\."):
             Cuid(length=invalid_length)
         cuid = Cuid()
-        with pytest.raises(ValueError, match=r"Length must be at least 1 character\."):
+        with pytest.raises(ValueError, match=r"Length must never exceed 32 characters\."):
             cuid.generate(length=invalid_length)
 
-    #  Tests that generate() works when length parameter is less than 2.
-    def test_generate_length_less_than_2(self: TestCuid) -> None:
+    #  Tests that Cuid and generate() raise ValueError when length is less than 2 or a boolean.
+    @pytest.mark.parametrize("invalid_length", [1, 0, -1, -5, True, False])
+    def test_generate_non_positive_length(self: TestCuid, invalid_length: int) -> None:
+        with pytest.raises(ValueError, match=r"Length must be at least 2 characters\."):
+            Cuid(length=invalid_length)
         cuid = Cuid()
-        with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range") as record:
-            assert len(cuid.generate(length=1)) == 1
-        assert record[0].filename == __file__
+        with pytest.raises(ValueError, match=r"Length must be at least 2 characters\."):
+            cuid.generate(length=invalid_length)
 
-    #  Tests that lengths outside MIN_LENGTH..BIG_LENGTH (1 and 33..98) emit FutureWarning attributed to caller.
-    @pytest.mark.parametrize("deprecated_length", [1, BIG_LENGTH + 1, MAXIMUM_LENGTH - 2])
-    def test_deprecated_lengths_emit_warning(self: TestCuid, deprecated_length: int) -> None:
-        with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range") as record:
-            cuid_instance = Cuid(length=deprecated_length)
-        assert record[0].category is FutureWarning
-        assert record[0].filename == __file__
-        assert len(cuid_instance.generate()) == deprecated_length
-
-        cuid = Cuid()
-        with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range") as record:
-            generated = cuid.generate(length=deprecated_length)
-        assert record[0].filename == __file__
-        assert len(generated) == deprecated_length
-
-        with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range") as record:
-            generated_from_create_id = create_id(length=deprecated_length)
-        assert record[0].filename == __file__
-        assert len(generated_from_create_id) == deprecated_length
-
-    #  Tests that specification boundary lengths MIN_LENGTH (2) and BIG_LENGTH (32) emit no FutureWarning.
+    #  Tests that specification boundary lengths MIN_LENGTH (2) and BIG_LENGTH (32) generate valid IDs of that length.
     @pytest.mark.parametrize("valid_length", [MIN_LENGTH, BIG_LENGTH])
-    def test_spec_boundary_lengths_emit_no_warning(self: TestCuid, valid_length: int) -> None:
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", FutureWarning)
-            cuid_instance = Cuid(length=valid_length)
-            assert len(cuid_instance.generate()) == valid_length
+    def test_spec_boundary_lengths_generate(self: TestCuid, valid_length: int) -> None:
+        cuid_instance = Cuid(length=valid_length)
+        generated = cuid_instance.generate()
+        assert len(generated) == valid_length
+        assert is_cuid(generated)
 
-            cuid = Cuid()
-            assert len(cuid.generate(length=valid_length)) == valid_length
+        cuid = Cuid()
+        generated = cuid.generate(length=valid_length)
+        assert len(generated) == valid_length
+        assert is_cuid(generated)
 
-            assert len(create_id(length=valid_length)) == valid_length
+        generated = create_id(length=valid_length)
+        assert len(generated) == valid_length
+        assert is_cuid(generated)
+
+    #  Tests that MAXIMUM_LENGTH is not part of the public or utils namespaces.
+    def test_maximum_length_not_exported(self: TestCuid) -> None:
+        assert not hasattr(cuid2, "MAXIMUM_LENGTH")
+        assert not hasattr(cuid2.generator, "MAXIMUM_LENGTH")
+        assert not hasattr(utils, "MAXIMUM_LENGTH")
 
     #  Tests that multiple instances of Cuid generate unique IDs.
     def test_generate_multiple_instances_unique_ids(self: TestCuid) -> None:
@@ -438,9 +419,10 @@ class TestIsCuid:
             pytest.param("ab", id="minimum-length"),
             pytest.param("a0", id="letter-then-digit"),
             pytest.param("zz", id="last-letter"),
-            pytest.param("a" * MAXIMUM_LENGTH, id="maximum-length"),
-            pytest.param("z" + "9" * (MAXIMUM_LENGTH - 1), id="maximum-length-digits"),
-            pytest.param("a0123456789abcdefghijklmnopqrstuvwxyz", id="full-base36-alphabet"),
+            pytest.param("a" * BIG_LENGTH, id="big-length"),
+            pytest.param("z" + "9" * (BIG_LENGTH - 1), id="big-length-digits"),
+            pytest.param("a0123456789abcdefgh", id="base36-first-half"),
+            pytest.param("zijklmnopqrstuvwxyz", id="base36-second-half"),
             pytest.param("cjld2cjxh0000qzrmn831i7r", id="24-chars-starting-with-c"),
             pytest.param("dlwvlnik2o0lh47uh4kg6q8j", id="24-chars-random"),
             pytest.param("yi7rqj1trke", id="upstream-valid-vector"),
@@ -459,9 +441,10 @@ class TestIsCuid:
             pytest.param("42", id="digits-only"),
             pytest.param("0a", id="leading-zero"),
             pytest.param("1b", id="leading-digit"),
-            pytest.param("9" + "a" * (MAXIMUM_LENGTH - 1), id="leading-digit-maximum-length"),
-            pytest.param("a" * (MAXIMUM_LENGTH + 1), id="one-over-maximum-length"),
-            pytest.param("a" * 1000, id="far-over-maximum-length"),
+            pytest.param("9" + "a" * (BIG_LENGTH - 1), id="leading-digit-big-length"),
+            pytest.param("a" * (BIG_LENGTH + 1), id="one-over-big-length"),
+            pytest.param("a" * 98, id="length-98-over-big-length"),
+            pytest.param("a" * 1000, id="far-over-big-length"),
         ],
     )
     def test_is_cuid_invalid_shape_or_length(self: TestIsCuid, value: str) -> None:
@@ -598,16 +581,16 @@ class TestIsCuid:
     def test_is_cuid_min_length_below_minimum_still_accepts_valid(self: TestIsCuid, min_length: int) -> None:
         assert Cuid.is_cuid("ab", min_length=min_length) is True
 
-    #  Tests that max_length cannot go above MAXIMUM_LENGTH, matching the generator's own limit.
-    @pytest.mark.parametrize("max_length", [MAXIMUM_LENGTH + 1, 200, 10**9])
+    #  Tests that max_length cannot go above BIG_LENGTH, matching the generator's own limit.
+    @pytest.mark.parametrize("max_length", [BIG_LENGTH + 1, 98, 200, 10**9])
     def test_is_cuid_max_length_cannot_exceed_maximum(self: TestIsCuid, max_length: int) -> None:
-        assert Cuid.is_cuid("a" * (MAXIMUM_LENGTH + 1), max_length=max_length) is False
+        assert Cuid.is_cuid("a" * (BIG_LENGTH + 1), max_length=max_length) is False
         assert Cuid.is_cuid("a" * 150, max_length=max_length) is False
-        assert Cuid.is_cuid("a" * MAXIMUM_LENGTH, max_length=max_length) is True
+        assert Cuid.is_cuid("a" * BIG_LENGTH, max_length=max_length) is True
 
-    #  Tests that a min_length above MAXIMUM_LENGTH can never match.
+    #  Tests that a min_length above BIG_LENGTH can never match.
     def test_is_cuid_min_length_above_maximum(self: TestIsCuid) -> None:
-        assert Cuid.is_cuid("a" * MAXIMUM_LENGTH, min_length=MAXIMUM_LENGTH + 1) is False
+        assert Cuid.is_cuid("a" * BIG_LENGTH, min_length=BIG_LENGTH + 1) is False
 
     #  Tests that max_length below 2 can never match.
     @pytest.mark.parametrize("max_length", [1, 0, -1])
@@ -635,21 +618,13 @@ class TestIsCuid:
         assert cuid.is_cuid("NOT-A-CUID") is False
 
     #  Tests that every generated id validates for every supported length, including the boundaries.
-    #  The exact length is only asserted below MAXIMUM_LENGTH - 1: at 97 and 98 characters the generator
-    #  occasionally returns a shorter id (the SHA3-512 base36 digest is not always long enough), but
-    #  such ids are still valid.
-    @pytest.mark.parametrize("length", [2, 3, 10, DEFAULT_LENGTH, BIG_LENGTH, 50, MAXIMUM_LENGTH - 2, MAXIMUM_LENGTH])
+    @pytest.mark.parametrize("length", [MIN_LENGTH, 3, 10, DEFAULT_LENGTH, BIG_LENGTH])
     def test_is_cuid_accepts_generated_ids(self: TestIsCuid, length: int) -> None:
-        if length > BIG_LENGTH:
-            with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range"):
-                cuid = Cuid(length=length)
-        else:
-            cuid = Cuid(length=length)
+        cuid = Cuid(length=length)
         for _ in range(250):
             generated = cuid.generate()
-            assert len(generated) <= length
-            if length < MAXIMUM_LENGTH - 1:
-                assert len(generated) == length
+            assert len(generated) == length
+            assert is_cuid(generated) is True
             assert Cuid.is_cuid(generated) is True
 
     #  Tests that ids generated via generate(length=...) and via the wrapper also validate.
@@ -666,15 +641,6 @@ class TestIsCuid:
         assert Cuid.is_cuid(generated, min_length=DEFAULT_LENGTH, max_length=DEFAULT_LENGTH) is True
         assert Cuid.is_cuid(generated, min_length=DEFAULT_LENGTH + 1) is False
         assert Cuid.is_cuid(generated, max_length=DEFAULT_LENGTH - 1) is False
-
-    #  Documents a known asymmetry: the generator can emit 1-character ids, but a valid CUID2 needs 2+ characters.
-    #  If the generator's minimum length is ever raised to 2, this test should be updated.
-    def test_is_cuid_rejects_single_character_generated_id(self: TestIsCuid) -> None:
-        with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range"):
-            generated = Cuid(length=1).generate()
-        assert len(generated) == 1
-        assert Cuid.is_cuid(generated) is False
-        assert Cuid.is_cuid(generated, min_length=1) is False
 
     #  Tests that mutating a generated id in each way is detected.
     def test_is_cuid_detects_mutated_generated_id(self: TestIsCuid) -> None:
@@ -731,22 +697,16 @@ class TestCreateId:
         """Tests that consecutive create_id() calls return distinct IDs."""
         assert create_id() != create_id()
 
-    @pytest.mark.parametrize("length", [1, BIG_LENGTH + 1])
-    def test_create_id_deprecated_length(self: TestCreateId, length: int) -> None:
-        """Tests that create_id() emits FutureWarning attributed to the caller for lengths outside 2..32."""
-        with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range") as record:
-            generated: str = create_id(length=length)
-        assert len(generated) == length
-        assert record[0].filename == __file__
-
     @pytest.mark.parametrize(
         ("invalid_length", "expected_match"),
         [
-            (0, r"Length must be at least 1 character\."),
-            (-1, r"Length must be at least 1 character\."),
-            (True, r"Length must be at least 1 character\."),
-            (False, r"Length must be at least 1 character\."),
-            (MAXIMUM_LENGTH + 1, r"Length must never exceed 98 characters\."),
+            (1, r"Length must be at least 2 characters\."),
+            (0, r"Length must be at least 2 characters\."),
+            (-1, r"Length must be at least 2 characters\."),
+            (True, r"Length must be at least 2 characters\."),
+            (False, r"Length must be at least 2 characters\."),
+            (BIG_LENGTH + 1, r"Length must never exceed 32 characters\."),
+            (98, r"Length must never exceed 32 characters\."),
         ],
     )
     def test_create_id_invalid_length(
@@ -871,29 +831,16 @@ class TestCuidWrapper:
         cuid_func: Callable[[], str] = cuid_wrapper(length=length)
         assert len(cuid_func()) == length
 
-    @pytest.mark.parametrize("length", [1, BIG_LENGTH + 1, MAXIMUM_LENGTH])
-    def test_cuid_wrapper_deprecated_length(self: TestCuidWrapper, length: int) -> None:
-        """Tests that cuid_wrapper emits FutureWarning for lengths outside MIN_LENGTH..BIG_LENGTH."""
-        with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range") as record:
-            cuid_func: Callable[[], str] = cuid_wrapper(length=length)
-        assert len(record) == 1
-        assert record[0].filename == __file__
-        with pytest.warns(FutureWarning, match=r"outside the CUID2 specification range") as call_record:
-            generated = cuid_func()
-        assert len(call_record) == 1
-        assert call_record[0].filename == __file__
-        assert len(generated) <= length
-        if length < MAXIMUM_LENGTH - 1:
-            assert len(generated) == length
-
     @pytest.mark.parametrize(
         ("invalid_length", "expected_match"),
         [
-            (0, r"Length must be at least 1 character\."),
-            (-1, r"Length must be at least 1 character\."),
-            (True, r"Length must be at least 1 character\."),
-            (False, r"Length must be at least 1 character\."),
-            (MAXIMUM_LENGTH + 1, r"Length must never exceed 98 characters\."),
+            (1, r"Length must be at least 2 characters\."),
+            (0, r"Length must be at least 2 characters\."),
+            (-1, r"Length must be at least 2 characters\."),
+            (True, r"Length must be at least 2 characters\."),
+            (False, r"Length must be at least 2 characters\."),
+            (BIG_LENGTH + 1, r"Length must never exceed 32 characters\."),
+            (98, r"Length must never exceed 32 characters\."),
         ],
     )
     def test_cuid_wrapper_invalid_length(

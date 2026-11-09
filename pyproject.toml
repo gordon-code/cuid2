@@ -35,7 +35,7 @@ Changelog = "https://github.com/gordon-code/cuid2/blob/main/CHANGELOG.md"
 Issues = "https://github.com/gordon-code/cuid2/issues"
 
 [project.scripts]
-cuid2 = "cuid2.cli:_console_main"
+cuid2 = "cuid2.cli:main"
 
 [tool.uv]
 default-groups = ["build", "lint", "test", "typing"]

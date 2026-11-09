@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import os
 import sys
-import warnings
 from argparse import SUPPRESS, Action, ArgumentParser, ArgumentTypeError, RawDescriptionHelpFormatter
 from contextlib import suppress
 from functools import partial
 from typing import TYPE_CHECKING
 
 from cuid2.generator import Cuid, is_cuid
-from cuid2.utils import BIG_LENGTH, DEFAULT_LENGTH, MAXIMUM_LENGTH, MIN_LENGTH
+from cuid2.utils import BIG_LENGTH, DEFAULT_LENGTH, MIN_LENGTH
 
 __all__ = ["main"]
 
@@ -19,7 +18,6 @@ if TYPE_CHECKING:
     from argparse import Namespace
     from collections.abc import Iterable, Iterator, Sequence
     from random import Random
-    from typing import TextIO
 
 _SLUG_LENGTH: int = 5
 
@@ -61,11 +59,11 @@ def _parse_length(raw: str) -> int:
     except ValueError as err:
         msg = f"invalid int value: {raw!r}"
         raise ArgumentTypeError(msg) from err
-    if value < 1:
-        msg = "length must be at least 1 character"
+    if value < MIN_LENGTH:
+        msg = f"length must be at least {MIN_LENGTH} characters"
         raise ArgumentTypeError(msg)
-    if value > MAXIMUM_LENGTH:
-        msg = f"length must never exceed {MAXIMUM_LENGTH} characters"
+    if value > BIG_LENGTH:
+        msg = f"length must never exceed {BIG_LENGTH} characters"
         raise ArgumentTypeError(msg)
     return value
 
@@ -93,23 +91,6 @@ def _fixed_fingerprint(random_generator: Random, *, fingerprint: str) -> str:
     # Matches @paralleldrive/cuid2 `init({ fingerprint })`, which hashes the string as-is.
     del random_generator
     return fingerprint
-
-
-def _show_cli_warning(  # noqa: PLR0913, PLR0917
-    message: Warning | str,
-    category: type[Warning],
-    filename: str,
-    lineno: int,
-    file: TextIO | None = None,
-    line: str | None = None,
-) -> None:
-    # Prints warnings as one clean `cuid2: warning: <message>` stderr line, without the source path or code line.
-    del category, filename, lineno, line
-    stream = file if file is not None else sys.stderr
-    if stream is None:  # No stderr (pythonw or fd 2 closed at startup): drop the warning like the stdlib does.
-        return
-    with suppress(OSError):
-        stream.write(f"cuid2: warning: {message}\n")
 
 
 def _build_parser() -> ArgumentParser:
@@ -207,13 +188,11 @@ def _resolve_length(parser: ArgumentParser, cli_args: Namespace) -> int | None:
     return sources[0] if sources else None
 
 
-def _validate_mode_flags(parser: ArgumentParser, cli_args: Namespace, target_length: int | None) -> None:
+def _validate_mode_flags(parser: ArgumentParser, cli_args: Namespace) -> None:
     if cli_args.check is None and cli_args.quiet:
         parser.error("argument -q/--quiet: only allowed with --check/--validate")
     if cli_args.check is not None and (cli_args.count is not None or cli_args.fingerprint is not None):
         parser.error("arguments -n/-c/--count and -f/--fingerprint are not allowed with --check/--validate")
-    if cli_args.check is not None and target_length is not None and target_length < MIN_LENGTH:
-        parser.error(f"argument --check/--validate: length must be at least {MIN_LENGTH} characters")
 
 
 def _iter_candidates(check_arg: str) -> Iterator[str]:
@@ -232,7 +211,7 @@ def _iter_candidates(check_arg: str) -> Iterator[str]:
 
 def _run_check(check_arg: str, target_length: int | None, *, quiet: bool) -> int:
     min_len = target_length if target_length is not None else MIN_LENGTH
-    max_len = target_length if target_length is not None else MAXIMUM_LENGTH
+    max_len = target_length if target_length is not None else BIG_LENGTH
     all_valid = True
     exhausted = False
 
@@ -266,20 +245,12 @@ def main(args: Sequence[str] | None = None) -> None:
     SystemExit
         Raised with exit code ``0`` or ``1`` in ``--check``/``--validate`` or
         ``--version``/``--help`` modes, or exit code ``2`` on invalid arguments,
-        including a length warning that a warnings filter turned into an error.
-
-    Warns
-    -----
-    FutureWarning
-        When generating IDs (not in ``--check``/``--validate`` mode) with a length
-        outside the CUID2 specification range (``MIN_LENGTH``..``BIG_LENGTH``,
-        i.e., 2..32). The ``cuid2`` console script and ``python -m cuid2`` print it
-        as a ``cuid2: warning: ...`` line.
+        including a length outside ``MIN_LENGTH``..``BIG_LENGTH`` (2..32).
     """
     parser = _build_parser()
     cli_args = parser.parse_args(args)
     target_length = _resolve_length(parser, cli_args)
-    _validate_mode_flags(parser, cli_args, target_length)
+    _validate_mode_flags(parser, cli_args)
 
     if cli_args.check is not None:
         exit_code = _run_check(cli_args.check, target_length, quiet=cli_args.quiet)
@@ -287,24 +258,12 @@ def main(args: Sequence[str] | None = None) -> None:
 
     resolved_length = target_length if target_length is not None else DEFAULT_LENGTH
     count = cli_args.count if cli_args.count is not None else 1
-    try:
-        cuid_generator = (
-            Cuid(length=resolved_length)
-            if cli_args.fingerprint is None
-            else Cuid(
-                length=resolved_length,
-                fingerprint=partial(_fixed_fingerprint, fingerprint=cli_args.fingerprint),
-            )
+    cuid_generator = (
+        Cuid(length=resolved_length)
+        if cli_args.fingerprint is None
+        else Cuid(
+            length=resolved_length,
+            fingerprint=partial(_fixed_fingerprint, fingerprint=cli_args.fingerprint),
         )
-    except FutureWarning as warning:
-        # A warnings filter such as -W error or PYTHONWARNINGS=error turned the length warning into an error.
-        parser.error(str(warning))
+    )
     _write_lines(f"{cuid_generator.generate()}\n" for _ in range(count))
-
-
-def _console_main(args: Sequence[str] | None = None) -> None:  # pyright: ignore[reportUnusedFunction]
-    # Entry point for the `cuid2` console script and `python -m cuid2`: prints warnings as `cuid2: warning:` lines.
-    # main() leaves warning delivery to its caller, so programmatic use never touches the global showwarning hook.
-    with warnings.catch_warnings():
-        warnings.showwarning = _show_cli_warning
-        main(args)

@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from cuid2.cli import _console_main  # pyright: ignore[reportPrivateUsage]
+from cuid2.cli import main
 
-_console_main()
+main()

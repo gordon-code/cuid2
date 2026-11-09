@@ -77,7 +77,7 @@ short_cuid: str = create_id(length=10)
 print(is_cuid(my_cuid))  # True
 ```
 
-The CUID2 specification allows lengths 2..32; lengths `1` and `33`–`98` are still accepted in 2.x but emit a `FutureWarning` (shown as `cuid2: warning: ...` by the CLI), and 3.0.0 will reject them with `ValueError`.
+The CUID2 specification allows lengths 2..32 (`MIN_LENGTH` to `BIG_LENGTH`); lengths outside `2..32` raise `ValueError` (and exit with code 2 on the CLI).
 
 > **Tip for Django & ORM defaults:** Pass `default=create_id` directly on model fields (e.g., `models.CharField(max_length=24, default=create_id)`). Because `create_id` is a top-level function backed by a lazy singleton generator, Django `makemigrations` can serialize it directly and `Cuid()` initialization is deferred until the first ID is generated in each worker process.
 
@@ -125,7 +125,7 @@ def main() -> None:
 ```
 
 `is_cuid` (and `Cuid.is_cuid`) also accepts optional `min_length` and `max_length` arguments to tighten the allowed length.
-The bounds are clamped to 2 and 98 characters, so they can narrow but never widen what is considered valid.
+The bounds are clamped to 2 and 32 characters (`MIN_LENGTH` and `BIG_LENGTH`), so they can narrow but never widen what is considered valid.
 
 ## Changelog
 
