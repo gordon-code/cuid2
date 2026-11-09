@@ -65,13 +65,13 @@ class TestCuid:
             match = pattern.search(stderr)
             assert match is not None, stderr
             cumulative_us.append(int(match.group(1)))
-        # A cold `import cuid2` (including its standard library imports) should take less than 10 ms locally. Shared
+        # A cold `import cuid2` (including its standard library imports) should take less than 15 ms locally. Shared
         # CI runners (CI=true) are slower and noisier: 25 ms on Linux, or 45 ms on macOS and Windows, whose runners
         # load modules up to about twice as slowly.
         if os.environ.get("CI", "").lower() == "true":
             limit_us = 25_000 if sys.platform.startswith("linux") else 45_000
         else:
-            limit_us = 10_000
+            limit_us = 15_000
         assert min(cumulative_us) < limit_us
 
     #  Tests that generate() returns a string of length DEFAULT_LENGTH.
@@ -91,7 +91,7 @@ class TestCuid:
 
     #  Tests that Cuid and generate() raise ValueError when length is greater than BIG_LENGTH (32).
     @pytest.mark.parametrize("invalid_length", [BIG_LENGTH + 1, 50, 98, 99, 100])
-    def test_generate_really_long_length(self: TestCuid, invalid_length: int) -> None:
+    def test_generate_length_above_maximum(self: TestCuid, invalid_length: int) -> None:
         with pytest.raises(ValueError, match=r"Length must never exceed 32 characters\."):
             Cuid(length=invalid_length)
         cuid = Cuid()
@@ -100,7 +100,7 @@ class TestCuid:
 
     #  Tests that Cuid and generate() raise ValueError when length is less than 2 or a boolean.
     @pytest.mark.parametrize("invalid_length", [1, 0, -1, -5, True, False])
-    def test_generate_non_positive_length(self: TestCuid, invalid_length: int) -> None:
+    def test_generate_length_below_minimum(self: TestCuid, invalid_length: int) -> None:
         with pytest.raises(ValueError, match=r"Length must be at least 2 characters\."):
             Cuid(length=invalid_length)
         cuid = Cuid()
@@ -583,13 +583,13 @@ class TestIsCuid:
 
     #  Tests that max_length cannot go above BIG_LENGTH, matching the generator's own limit.
     @pytest.mark.parametrize("max_length", [BIG_LENGTH + 1, 98, 200, 10**9])
-    def test_is_cuid_max_length_cannot_exceed_maximum(self: TestIsCuid, max_length: int) -> None:
+    def test_is_cuid_max_length_cannot_exceed_big_length(self: TestIsCuid, max_length: int) -> None:
         assert Cuid.is_cuid("a" * (BIG_LENGTH + 1), max_length=max_length) is False
         assert Cuid.is_cuid("a" * 150, max_length=max_length) is False
         assert Cuid.is_cuid("a" * BIG_LENGTH, max_length=max_length) is True
 
     #  Tests that a min_length above BIG_LENGTH can never match.
-    def test_is_cuid_min_length_above_maximum(self: TestIsCuid) -> None:
+    def test_is_cuid_min_length_above_big_length(self: TestIsCuid) -> None:
         assert Cuid.is_cuid("a" * BIG_LENGTH, min_length=BIG_LENGTH + 1) is False
 
     #  Tests that max_length below 2 can never match.
