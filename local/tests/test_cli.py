@@ -64,6 +64,8 @@ class TestCli:
             "usage: cuid2",
             "24",
             "2..32",
+            "Generation",
+            "validation",
             "--slug",
             "--count",
             "--fingerprint",

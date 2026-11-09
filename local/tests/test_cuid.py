@@ -10,6 +10,9 @@ import subprocess
 import sys
 import threading
 import time
+from decimal import Decimal
+from enum import IntEnum
+from fractions import Fraction
 from functools import partial
 from random import SystemRandom
 from timeit import repeat
@@ -106,6 +109,32 @@ class TestCuid:
         cuid = Cuid()
         with pytest.raises(ValueError, match=r"Length must be at least 2 characters\."):
             cuid.generate(length=invalid_length)
+
+    #  Tests that Cuid, generate(), create_id() and cuid_wrapper() raise TypeError for non-integer lengths.
+    @pytest.mark.parametrize(
+        "invalid_length",
+        [10.0, 2.5, float("nan"), Decimal(10), Fraction(5), "10", [10]],
+        ids=["float", "fractional-float", "nan", "decimal", "fraction", "str", "list"],
+    )
+    def test_generate_non_integer_length(self: TestCuid, invalid_length: Any) -> None:  # noqa: ANN401
+        with pytest.raises(TypeError):
+            Cuid(length=invalid_length)
+        with pytest.raises(TypeError):
+            Cuid().generate(length=invalid_length)
+        with pytest.raises(TypeError):
+            create_id(length=invalid_length)
+        with pytest.raises(TypeError):
+            cuid_wrapper(length=invalid_length)
+
+    #  Tests that integer-like lengths (int subclasses) are accepted and produce IDs of exactly that length.
+    def test_generate_integer_like_length(self: TestCuid) -> None:
+        class Size(IntEnum):
+            SHORT = 10
+
+        assert len(Cuid(length=Size.SHORT).generate()) == Size.SHORT
+        assert len(Cuid().generate(length=Size.SHORT)) == Size.SHORT
+        assert len(create_id(length=Size.SHORT)) == Size.SHORT
+        assert len(cuid_wrapper(length=Size.SHORT)()) == Size.SHORT
 
     #  Tests that specification boundary lengths MIN_LENGTH (2) and BIG_LENGTH (32) generate valid IDs of that length.
     @pytest.mark.parametrize("valid_length", [MIN_LENGTH, BIG_LENGTH])

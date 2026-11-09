@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import operator
 import os
 import re
 import threading
@@ -66,8 +67,10 @@ def _validate_length(length: int) -> None:
     ------
     ValueError
         If `length` is a boolean, less than `MIN_LENGTH` (2), or greater than `BIG_LENGTH` (32).
+    TypeError
+        If `length` is not an integer (a float, `Decimal`, `Fraction`, or string, for example).
     """
-    if isinstance(length, bool) or length < MIN_LENGTH:
+    if isinstance(length, bool) or operator.index(length) < MIN_LENGTH:
         msg = f"Length must be at least {MIN_LENGTH} characters."
         raise ValueError(msg)
     if length > BIG_LENGTH:
@@ -157,7 +160,7 @@ class Cuid:
             is called. The `create_counter` function from the `utils` module is used by default. Called again with a
             new random starting value in a forked child process.
         length : int, default=DEFAULT_LENGTH (24)
-            The length parameter is an integer that determines the maximum length of the generated string.
+            The length parameter is an integer that determines the length of the generated string.
             It has a default value of DEFAULT_LENGTH (24).
             A length value less than `MIN_LENGTH` (2) or greater than `BIG_LENGTH` (32 characters) will raise a
             ValueError.
@@ -170,6 +173,8 @@ class Cuid:
         ValueError
             If the length parameter is a boolean, less than `MIN_LENGTH` (2), or greater than `BIG_LENGTH` (32
             characters).
+        TypeError
+            If the length parameter is not an integer.
 
         Notes
         -----
@@ -261,13 +266,15 @@ class Cuid:
         str
             Starts with a single, random letter, followed by a hash. The hash is generated using a combination of
             the current time in base 36, a random salt, a base 36 counter, and a system fingerprint.
-            The length of the returned string is limited by `length`.
+            The returned string has exactly `length` characters.
 
         Raises
         ------
         ValueError
             If the length parameter is a boolean, less than `MIN_LENGTH` (2), or greater than `BIG_LENGTH` (32
             characters).
+        TypeError
+            If the length parameter is not an integer.
         """
         if length is not None:
             _validate_length(length)
@@ -318,6 +325,8 @@ def create_id(length: int | None = None) -> str:
     ------
     ValueError
         If the length parameter is a boolean, less than `MIN_LENGTH` (2), or greater than `BIG_LENGTH` (32 characters).
+    TypeError
+        If the length parameter is not an integer.
     """
     global _default_generator  # noqa: PLW0603
     if length is not None:
@@ -338,7 +347,7 @@ def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
     Parameters
     ----------
     length : int, default=DEFAULT_LENGTH (24)
-        The length parameter is an integer that determines the maximum length of the generated string.
+        The length parameter is an integer that determines the length of the generated string.
         It has a default value of DEFAULT_LENGTH (24).
         A length value less than `MIN_LENGTH` (2) or greater than `BIG_LENGTH` (32 characters) will raise a ValueError.
 
@@ -351,6 +360,8 @@ def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
     ------
     ValueError
         If the length parameter is a boolean, less than `MIN_LENGTH` (2), or greater than `BIG_LENGTH` (32 characters).
+    TypeError
+        If the length parameter is not an integer.
     """
     _validate_length(length)
     return partial(create_id, length=length)

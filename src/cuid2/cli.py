@@ -93,12 +93,18 @@ def _fixed_fingerprint(random_generator: Random, *, fingerprint: str) -> str:
     return fingerprint
 
 
+_LENGTH_HELP: str = (
+    f"Length of CUID2 to generate or validate (allowed: {MIN_LENGTH}..{BIG_LENGTH}). "
+    f"Generation defaults to {DEFAULT_LENGTH}; validation accepts any allowed length unless one is given."
+)
+
+
 def _build_parser() -> ArgumentParser:
     parser = ArgumentParser(
         prog="cuid2",
         description=(
             f"Generate or validate collision-resistant CUID2 identifiers "
-            f"(default length: {DEFAULT_LENGTH}, spec range: {MIN_LENGTH}..{BIG_LENGTH})."
+            f"(default generated length: {DEFAULT_LENGTH}, spec range: {MIN_LENGTH}..{BIG_LENGTH})."
         ),
         epilog=(
             "examples:\n"
@@ -117,7 +123,7 @@ def _build_parser() -> ArgumentParser:
         nargs="?",
         type=_parse_length,
         default=None,
-        help=f"Length of CUID2 to generate or validate (default: {DEFAULT_LENGTH}, spec: {MIN_LENGTH}..{BIG_LENGTH}).",
+        help=_LENGTH_HELP,
     )
     parser.add_argument(
         "-V",
@@ -134,7 +140,7 @@ def _build_parser() -> ArgumentParser:
         metavar="LENGTH",
         type=_parse_length,
         default=None,
-        help=f"Length of CUID2 to generate or validate (default: {DEFAULT_LENGTH}, spec: {MIN_LENGTH}..{BIG_LENGTH}).",
+        help=_LENGTH_HELP,
     )
     parser.add_argument(
         "--slug",
