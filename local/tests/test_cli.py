@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import errno
 import importlib
 import importlib.metadata
 import io
 import os
 import runpy
+import subprocess
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -16,7 +19,14 @@ from cuid2 import BIG_LENGTH, DEFAULT_LENGTH, MIN_LENGTH, create_id, is_cuid
 from cuid2.cli import main as cli_main
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from unittest.mock import Mock
+
+
+def _assert_cli_exits(args: list[str], expected_code: int) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        cli_main(args)
+    assert exc_info.value.code == expected_code
 
 
 class TestCli:
@@ -382,7 +392,7 @@ class TestCli:
         monkeypatch: pytest.MonkeyPatch,
         mocker: Mock,
     ) -> None:
-        """Tests that BrokenPipeError on stdout redirects stdout fd to devnull when available."""
+        """Tests that BrokenPipeError on stdout redirects stdout fd to devnull and flushes before closing."""
         fake_stdout = io.StringIO()
         monkeypatch.setattr("sys.stdout", fake_stdout)
         write_mock = mocker.patch.object(fake_stdout, "write", side_effect=BrokenPipeError)
@@ -390,14 +400,18 @@ class TestCli:
         write_mock.assert_called_once()
         assert fake_stdout.getvalue() == ""
 
+        calls: list[str] = []
         mocker.patch.object(fake_stdout, "fileno", return_value=1)
         open_mock = mocker.patch("os.open", return_value=99)
-        dup2_mock = mocker.patch("os.dup2")
-        close_mock = mocker.patch("os.close")
+        dup2_mock = mocker.patch("os.dup2", side_effect=lambda *_args: calls.append("dup2"))
+        flush_mock = mocker.patch.object(fake_stdout, "flush", side_effect=lambda: calls.append("flush"))
+        close_mock = mocker.patch("os.close", side_effect=lambda *_args: calls.append("close"))
         cli_main(["-n", "5"])
         open_mock.assert_called_once_with(os.devnull, os.O_WRONLY)
         dup2_mock.assert_called_once_with(99, 1)
+        flush_mock.assert_called_once_with()
         close_mock.assert_called_once_with(99)
+        assert calls == ["dup2", "flush", "close"]
 
     def test_cli_check_broken_pipe_is_not_success(
         self: TestCli,
@@ -412,6 +426,236 @@ class TestCli:
         with pytest.raises(SystemExit) as exc_info:
             cli_main(["--check", "-"])
         assert exc_info.value.code == 1
+
+    def test_cli_check_invalid_utf8_stdin(
+        self: TestCli,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Tests that --check - reconfigures TextIOWrapper stdin with surrogateescape instead of crashing."""
+        valid_id = create_id()
+
+        with monkeypatch.context() as mp:
+            mp.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(b"\xff\xfe\n"), encoding="utf-8", errors="strict"))
+            _assert_cli_exits(["--check", "-"], 1)
+            captured = capsys.readouterr()
+            assert captured.out == "\\udcff\\udcfe: invalid\n"
+            assert captured.err == ""
+
+        with monkeypatch.context() as mp:
+            mp.setattr(
+                "sys.stdin",
+                io.TextIOWrapper(io.BytesIO(f"{valid_id}\n".encode() + b"a\x80\n"), encoding="utf-8", errors="strict"),
+            )
+            _assert_cli_exits(["--check", "-"], 1)
+            captured = capsys.readouterr()
+            assert captured.out == f"{valid_id}: valid\na\\udc80: invalid\n"
+            assert captured.err == ""
+
+    def test_cli_closed_stdio(
+        self: TestCli,
+        monkeypatch: pytest.MonkeyPatch,
+        mocker: Mock,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Tests generation, --version, and --check behavior when stdin or stdout is closed."""
+        valid_id = create_id()
+
+        with monkeypatch.context() as mp:
+            mp.setattr("sys.stdout", None)
+            cli_main([])
+            _assert_cli_exits(["-V"], 0)
+            _assert_cli_exits(["-h"], 0)
+            assert capsys.readouterr().err == ""
+            _assert_cli_exits(["--check", valid_id, "-q"], 0)
+            _assert_cli_exits(["--check", "BAD_ID", "-q"], 1)
+            _assert_cli_exits(["--check", valid_id], 1)
+
+        with monkeypatch.context() as mp:
+            closed_out = io.StringIO()
+            closed_out.close()
+            mp.setattr("sys.stdout", closed_out)
+            cli_main(["-n", "2"])
+            _assert_cli_exits(["-V"], 0)
+            _assert_cli_exits(["-h"], 0)
+            assert sys.stdout is closed_out
+            _assert_cli_exits(["--check", valid_id, "-q"], 0)
+
+        with monkeypatch.context() as mp:
+            fake_stdout = io.StringIO()
+            mp.setattr("sys.stdout", fake_stdout)
+            mocker.patch.object(fake_stdout, "flush", side_effect=OSError(errno.EBADF, "Bad file descriptor"))
+            _assert_cli_exits(["--check", valid_id], 1)
+
+        with monkeypatch.context() as mp:
+            mp.setattr("sys.stdin", None)
+            _assert_cli_exits(["--check", "-"], 1)
+            captured_stdin_none = capsys.readouterr()
+            assert captured_stdin_none.out == ""
+            assert captured_stdin_none.err == ""
+            _assert_cli_exits(["--check", "-", "-q"], 1)
+            captured_stdin_none_quiet = capsys.readouterr()
+            assert captured_stdin_none_quiet.out == ""
+            assert captured_stdin_none_quiet.err == ""
+
+        with monkeypatch.context() as mp:
+            closed_in = io.StringIO()
+            closed_in.close()
+            mp.setattr("sys.stdin", closed_in)
+            _assert_cli_exits(["--check", "-"], 1)
+            captured_closed_in = capsys.readouterr()
+            assert captured_closed_in.out == ""
+            assert captured_closed_in.err == ""
+
+    def test_cli_duck_typed_stdout(
+        self: TestCli,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Tests minimal duck-typed stdout writers without .closed or .fileno attributes."""
+        chunks: list[str] = []
+        broken = False
+
+        class _MinimalWriter:
+            def write(self: _MinimalWriter, s: str) -> int:
+                if broken:
+                    raise BrokenPipeError
+                chunks.append(s)
+                return len(s)
+
+            def flush(self: _MinimalWriter) -> None:
+                return None
+
+        writer = _MinimalWriter()
+        assert not hasattr(writer, "closed")
+        assert not hasattr(writer, "fileno")
+        monkeypatch.setattr("sys.stdout", writer)
+
+        cli_main([])
+        assert is_cuid("".join(chunks).strip(), min_length=DEFAULT_LENGTH, max_length=DEFAULT_LENGTH) is True
+        chunks.clear()
+
+        _assert_cli_exits(["-h"], 0)
+        assert "usage: cuid2" in "".join(chunks)
+        chunks.clear()
+
+        broken = True
+        cli_main([])
+        _assert_cli_exits(["-h"], 0)
+        assert chunks == []
+        assert capsys.readouterr().err == ""
+
+    def test_cli_real_io_errors_propagate(
+        self: TestCli,
+        monkeypatch: pytest.MonkeyPatch,
+        mocker: Mock,
+    ) -> None:
+        """Tests that non-closed OSErrors on stdout, CSPRNG generation, and stdin propagate."""
+        with monkeypatch.context() as mp:
+            fake_stdout = io.StringIO()
+            mp.setattr("sys.stdout", fake_stdout)
+            mocker.patch.object(fake_stdout, "write", side_effect=OSError(errno.ENOSPC, "No space left on device"))
+            with pytest.raises(OSError, match="No space left on device") as exc_info:
+                cli_main(["-n", "2"])
+            assert exc_info.value.errno == errno.ENOSPC
+
+        with monkeypatch.context() as mp:
+            fake_stdout = io.StringIO()
+            mp.setattr("sys.stdout", fake_stdout)
+            mocker.patch.object(fake_stdout, "flush", side_effect=OSError(errno.ENOSPC, "No space left on device"))
+            with pytest.raises(OSError, match="No space left on device") as exc_info:
+                cli_main(["-n", "2"])
+            assert exc_info.value.errno == errno.ENOSPC
+
+        with monkeypatch.context() as mp:
+
+            class _BrokenStdin:
+                def __iter__(self: _BrokenStdin) -> Iterator[str]:
+                    err_msg = "Input/output error"
+                    raise OSError(errno.EIO, err_msg)
+
+            mp.setattr("sys.stdin", _BrokenStdin())
+            with pytest.raises(OSError, match="Input/output error") as exc_info:
+                cli_main(["--check", "-"])
+            assert exc_info.value.errno == errno.EIO
+
+        mocker.patch("cuid2.generator.Cuid.generate", side_effect=OSError(errno.EIO, "Input/output error"))
+        with pytest.raises(OSError, match="Input/output error") as exc_info:
+            cli_main(["-n", "2"])
+        assert exc_info.value.errno == errno.EIO
+
+    @pytest.mark.parametrize(
+        ("cmd", "stdin_bytes", "expected_rc", "expected_stdout"),
+        [
+            pytest.param(
+                ["-m", "cuid2", "--check", "-"],
+                b"\xff\xfe\n",
+                1,
+                b"\\udcff\\udcfe: invalid\n",
+                id="invalid_utf8_stdin",
+            ),
+            pytest.param(
+                ["-c", "import os, cuid2.cli; os.close(1); cuid2.cli.main(['--check', 'ab'])"],
+                None,
+                1,
+                b"",
+                id="close_fd1_check",
+            ),
+            pytest.param(
+                ["-c", "import os, cuid2.cli; os.close(1); cuid2.cli.main(['--check', 'ab', '-q'])"],
+                None,
+                0,
+                b"",
+                id="close_fd1_check_quiet",
+            ),
+            pytest.param(
+                ["-c", "import os, cuid2.cli; os.close(0); cuid2.cli.main(['--check', '-'])"],
+                None,
+                1,
+                b"",
+                id="close_fd0_check_stdin",
+            ),
+            pytest.param(
+                ["-c", "import os, cuid2.cli; os.close(1); cuid2.cli.main([])"],
+                None,
+                0,
+                b"",
+                id="close_fd1_generate",
+            ),
+            pytest.param(
+                ["-c", "import os, cuid2.cli; os.close(1); cuid2.cli.main(['-V'])"],
+                None,
+                0,
+                b"",
+                id="close_fd1_version",
+            ),
+            pytest.param(
+                ["-c", "import os, cuid2.cli; os.close(1); cuid2.cli.main(['-h'])"],
+                None,
+                0,
+                b"",
+                id="close_fd1_help",
+            ),
+        ],
+    )
+    def test_cli_closed_stdio_subprocess(
+        self: TestCli,
+        cmd: list[str],
+        stdin_bytes: bytes | None,
+        expected_rc: int,
+        expected_stdout: bytes,
+    ) -> None:
+        """Tests real OS descriptor closure and invalid UTF-8 stdin in isolated child interpreters."""
+        res = subprocess.run(  # noqa: S603
+            [sys.executable, "-I", *cmd],
+            input=stdin_bytes,
+            stdin=None if stdin_bytes is not None else subprocess.DEVNULL,
+            capture_output=True,
+            check=False,
+        )
+        assert res.returncode == expected_rc
+        assert res.stdout.replace(b"\r\n", b"\n") == expected_stdout
+        assert res.stderr == b""
 
     def test_cli_does_not_initialize_generator_on_import(
         self: TestCli,

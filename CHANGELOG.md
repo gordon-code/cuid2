@@ -8,6 +8,19 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 ## [Unreleased]
 
+### Changed
+
+- `Cuid`, `Cuid.generate`, `create_id`, and `cuid_wrapper` now normalize integer-like `length` arguments via `operator.index` on validation, so objects implementing only `__index__` (without `__gt__` or `__add__`) are supported and `cuid_wrapper` binds a plain `int` in its `functools.partial` keywords.
+
+### Removed
+
+- Unreferenced internal helpers `create_letter` and `create_hash` from `cuid2.utils`.
+
+### Fixed
+
+- `cuid2 --check -` now decodes `stdin` as UTF-8 (it used the locale encoding before, which only differs on Windows before Python 3.15 and in non-UTF-8 locales) and treats lines containing invalid UTF-8 bytes as invalid identifiers (escaped via `ascii()`), exiting with code 1 instead of crashing with a `UnicodeDecodeError` traceback.
+- The `cuid2` CLI no longer crashes with an unhandled traceback when `stdin` or `stdout` is closed (`<&-`, `>&-`): generation and `cuid2 --check <id> -q` exit with code 0 when `stdout` is closed, while non-quiet `--check` with closed `stdout` and `--check -` with closed `stdin` exit with code 1.
+
 ## [3.0.0] - 2026-11-08
 
 ### Changed

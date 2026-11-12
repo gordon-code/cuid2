@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import re
+import shutil
+import subprocess
 import sys
 import tarfile
 import tomllib
@@ -14,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 import keepachangelog
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterable, Sequence
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PYPROJECT_PATH = _REPO_ROOT / "pyproject.toml"
@@ -23,10 +26,28 @@ DEFAULT_DIST_DIR = _REPO_ROOT / "dist"
 DEFAULT_REPO_URL = "https://github.com/gordon-code/cuid2"
 
 _MIN_RELEASES = 2
-_SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+_MIN_RELEASES_WITH_PREV = 3
+_SEMVER_CORE = r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+_SEMVER_RE = re.compile(rf"^{_SEMVER_CORE}$")
+_TAG_VER_RE = re.compile(rf"^v{_SEMVER_CORE}$")
+_COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _H2_RE = re.compile(r"^## ")
+_RELEASE_H2_RE = re.compile(rf"^## \[(?P<version>{_SEMVER_CORE})\] - \d{{4}}-\d{{2}}-\d{{2}}$")
 _FOOTER_LINK_RE = re.compile(r"^\[[^\]]+\]:\s*https?://")
+
+
+def _parse_semver(version: str) -> tuple[int, int, int]:
+    match = _SEMVER_RE.fullmatch(version)
+    if match is None:
+        msg = f"Invalid semantic version: {version}"
+        raise ValueError(msg)
+    major, minor, patch = match.groups()
+    return (int(major), int(minor), int(patch))
+
+
+def _previous_release_version(release_keys: Sequence[str]) -> str | None:
+    return release_keys[2] if len(release_keys) >= _MIN_RELEASES_WITH_PREV else None
 
 
 def read_project_version(pyproject_path: Path = DEFAULT_PYPROJECT_PATH) -> str:
@@ -55,6 +76,29 @@ def read_project_version(pyproject_path: Path = DEFAULT_PYPROJECT_PATH) -> str:
     return version
 
 
+def _parse_release_h2(header: str) -> str:
+    match = _RELEASE_H2_RE.fullmatch(header)
+    if match is None:
+        msg = f"Invalid release heading in CHANGELOG.md: {header}"
+        raise ValueError(msg)
+    return match.group("version")
+
+
+def _validate_release_headings(release_keys: Sequence[str], lines: Sequence[str]) -> None:
+    h2_headers = [line for line in lines if _H2_RE.match(line)]
+    heading_versions = [_parse_release_h2(header) for header in h2_headers[1:]]
+    if len(set(heading_versions)) != len(heading_versions):
+        msg = "CHANGELOG.md has duplicate release headings"
+        raise ValueError(msg)
+    if list(release_keys) != ["unreleased", *heading_versions]:
+        msg = "CHANGELOG.md footer links do not match release headings"
+        raise ValueError(msg)
+    for newer, older in itertools.pairwise(heading_versions):
+        if _parse_semver(newer) <= _parse_semver(older):
+            msg = f"Release versions must be strictly decreasing: {newer} is listed above {older}"
+            raise ValueError(msg)
+
+
 def _validate_keepachangelog_metadata(
     changelog_path: Path,
     lines: list[str],
@@ -67,6 +111,7 @@ def _validate_keepachangelog_metadata(
     if len(release_keys) < _MIN_RELEASES or release_keys[0] != "unreleased" or release_keys[1] != version:
         msg = f"Expected keepachangelog release order ['unreleased', '{version}', ...] in {changelog_path}"
         raise ValueError(msg)
+    _validate_release_headings(release_keys, lines)
 
     unreleased_meta = releases["unreleased"].get("metadata", {})
     version_entry = releases[version]
@@ -80,12 +125,19 @@ def _validate_keepachangelog_metadata(
     expected_unreleased_url = f"{repo_url}/compare/v{version}...HEAD"
     version_url = str(version_meta.get("url") or "")
     unreleased_link_line = f"[Unreleased]: {expected_unreleased_url}"
-    version_link_prefix = f"[{version}]: {repo_url}/"
+    prev_version = _previous_release_version(release_keys)
+    if prev_version is None:
+        version_link_prefix = f"[{version}]: {repo_url}/"
+        valid_version_link = version_url.startswith(f"{repo_url}/") and any(
+            line.startswith(version_link_prefix) for line in lines
+        )
+    else:
+        expected_version_url = f"{repo_url}/compare/v{prev_version}...v{version}"
+        valid_version_link = version_url == expected_version_url and f"[{version}]: {expected_version_url}" in lines
     if (
         unreleased_meta.get("url") != expected_unreleased_url
-        or not version_url.startswith(f"{repo_url}/")
         or unreleased_link_line not in lines
-        or not any(line.startswith(version_link_prefix) for line in lines)
+        or not valid_version_link
     ):
         msg = f"Missing or stale compare links for {version} in {changelog_path} footer"
         raise ValueError(msg)
@@ -249,6 +301,169 @@ def verify_dist_archives(dist_dir: Path = DEFAULT_DIST_DIR, *, version: str) -> 
         raise ValueError(msg)
 
 
+def _run_git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    git = shutil.which("git")
+    if git is None:
+        msg = "git executable not found"
+        raise ValueError(msg)
+    return subprocess.run(  # noqa: S603
+        [git, *args],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _assert_full_history(repo_root: Path) -> None:
+    res = _run_git(repo_root, "rev-parse", "--is-shallow-repository")
+    if res.returncode != 0:
+        msg = f"Failed to query git repository history depth: {res.stderr.strip()}"
+        raise ValueError(msg)
+    if res.stdout.strip() == "true":
+        msg = "Repository is shallow; fetch full history (fetch-depth: 0)"
+        raise ValueError(msg)
+
+
+def _assert_tag_available(repo_root: Path, version: str) -> None:
+    if _run_git(repo_root, "rev-parse", "--verify", "--quiet", f"refs/tags/v{version}").returncode == 0:
+        msg = f"Release tag v{version} already exists"
+        raise ValueError(msg)
+
+
+def _list_version_tags(repo_root: Path) -> list[str]:
+    res = _run_git(repo_root, "tag", "--list", "v*")
+    if res.returncode != 0:
+        msg = f"Failed to list git tags: {res.stderr.strip()}"
+        raise ValueError(msg)
+    return res.stdout.splitlines()
+
+
+def _check_version_vs_tags(version: str, tag_names: Iterable[str]) -> None:
+    target = _parse_semver(version)
+    major = target[0]
+    for tag_name in tag_names:
+        if not _TAG_VER_RE.fullmatch(tag_name):
+            continue
+        tag_ver = tag_name[1:]
+        parsed_tag = _parse_semver(tag_ver)
+        if parsed_tag[0] == major and target <= parsed_tag:
+            msg = f"Version {version} is not greater than existing tag v{tag_ver} on major {major}"
+            raise ValueError(msg)
+
+
+def _assert_version_above_same_major_tags(repo_root: Path, version: str) -> None:
+    _check_version_vs_tags(version, _list_version_tags(repo_root))
+
+
+def _is_latest_version(version: str, tag_names: Iterable[str]) -> bool:
+    target = _parse_semver(version)
+    return all(target > _parse_semver(tag_name[1:]) for tag_name in tag_names if _TAG_VER_RE.fullmatch(tag_name))
+
+
+def _project_version_at(repo_root: Path, rev: str, rel_pyproject: str) -> str | None:
+    res = _run_git(repo_root, "show", f"{rev}:{rel_pyproject}")
+    if res.returncode != 0:
+        return None
+    try:
+        data = tomllib.loads(res.stdout)
+    except tomllib.TOMLDecodeError as exc:
+        msg = f"Cannot parse {rel_pyproject} at {rev}: {exc}"
+        raise ValueError(msg) from exc
+    project = data.get("project")
+    if not isinstance(project, dict):
+        return None
+    raw_version = project.get("version")
+    return raw_version if isinstance(raw_version, str) else None
+
+
+def _find_bump_commit(
+    repo_root: Path,
+    rel_pyproject: str,
+    *,
+    version: str,
+    prev_version: str | None,
+) -> str:
+    res = _run_git(repo_root, "log", "--first-parent", "--format=%H", "HEAD", "--", rel_pyproject)
+    if res.returncode != 0:
+        msg = f"Failed to inspect git history for {rel_pyproject}: {res.stderr.strip()}"
+        raise ValueError(msg)
+    shas = res.stdout.split()
+    if not shas:
+        msg = f"No first-parent commit reachable from HEAD touches {rel_pyproject}"
+        raise ValueError(msg)
+    for sha in shas:
+        if _COMMIT_SHA_RE.fullmatch(sha) is None:
+            msg = f"Invalid commit SHA from git log: {sha}"
+            raise ValueError(msg)
+    tip = _project_version_at(repo_root, shas[0], rel_pyproject)
+    if tip != version:
+        msg = f"Committed {rel_pyproject} at HEAD declares version {tip!r}, expected {version}"
+        raise ValueError(msg)
+    idx = 0
+    while idx + 1 < len(shas) and _project_version_at(repo_root, shas[idx + 1], rel_pyproject) == version:
+        idx += 1
+    bump = shas[idx]
+    prev = _project_version_at(repo_root, shas[idx + 1], rel_pyproject) if idx + 1 < len(shas) else None
+    if prev_version is not None and prev != prev_version:
+        msg = (
+            f"Version before release commit {bump} is {prev or 'absent'}, "
+            f"but CHANGELOG.md lists previous release {prev_version}"
+        )
+        raise ValueError(msg)
+    return bump
+
+
+def resolve_release_commit(
+    repo_root: Path,
+    *,
+    pyproject_path: Path,
+    version: str,
+    prev_version: str | None,
+) -> str:
+    """Resolve the first-parent commit SHA that bumped ``pyproject.toml`` to ``version``.
+
+    Parameters
+    ----------
+    repo_root : Path
+        Root directory of the git repository.
+    pyproject_path : Path
+        Path to ``pyproject.toml`` inside ``repo_root``.
+    version : str
+        Target strict SemVer release version expected at ``HEAD``.
+    prev_version : str | None
+        Immediately preceding release version from ``CHANGELOG.md``, or ``None`` for an initial release.
+
+    Returns
+    -------
+    str
+        40-character lowercase hexadecimal SHA-1 of the commit that introduced ``version``.
+
+    Raises
+    ------
+    ValueError
+        If ``git`` is unavailable, the repository is shallow, tag ``v{version}`` already exists,
+        ``version`` is not greater than every existing strict-SemVer tag of the same major version,
+        ``pyproject_path`` is outside ``repo_root``, ``HEAD`` does not declare ``version``, or the
+        version immediately preceding the bump commit does not match ``prev_version``.
+    """
+    _parse_semver(version)
+    _assert_full_history(repo_root)
+    _assert_tag_available(repo_root, version)
+    _assert_version_above_same_major_tags(repo_root, version)
+    rel_pyproject = pyproject_path.resolve().relative_to(repo_root.resolve()).as_posix()
+    bump = _find_bump_commit(
+        repo_root,
+        rel_pyproject,
+        version=version,
+        prev_version=prev_version,
+    )
+    if _COMMIT_SHA_RE.fullmatch(bump) is None:
+        msg = f"Resolved release commit is not a 40-character hex SHA: {bump}"
+        raise ValueError(msg)
+    return bump
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m local.verify_release",
@@ -284,6 +499,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional path to GITHUB_OUTPUT file to append version=<version>.",
     )
+    changelog_parser.add_argument(
+        "--resolve-commit",
+        action="store_true",
+        help="Resolve and verify the release commit SHA and tag invariants, printing the SHA to stdout.",
+    )
 
     dist_parser = subparsers.add_parser(
         "dist",
@@ -305,6 +525,35 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _run_changelog_command(args: argparse.Namespace, *, version: str) -> None:
+    notes = verify_and_extract_release_notes(args.changelog, version=version)
+    commit_sha: str | None = None
+    latest: bool | None = None
+    if args.resolve_commit:
+        release_keys = list(keepachangelog.to_dict(str(args.changelog), show_unreleased=True))
+        prev_version = _previous_release_version(release_keys)
+        repo_root = args.pyproject.resolve().parent
+        commit_sha = resolve_release_commit(
+            repo_root,
+            pyproject_path=args.pyproject,
+            version=version,
+            prev_version=prev_version,
+        )
+        latest = _is_latest_version(version, _list_version_tags(repo_root))
+
+    if args.notes_out is not None:
+        args.notes_out.write_text(notes, encoding="utf-8")
+    if commit_sha is not None:
+        sys.stdout.write(f"{commit_sha}\n")
+    if args.github_output is not None:
+        output_lines = [f"version={version}\n"]
+        if commit_sha is not None and latest is not None:
+            output_lines.append(f"commit={commit_sha}\n")
+            output_lines.append(f"latest={'true' if latest else 'false'}\n")
+        with args.github_output.open("a", encoding="utf-8") as fh:
+            fh.writelines(output_lines)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point for release and distribution verification.
 
@@ -323,12 +572,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         version = read_project_version(args.pyproject)
         if args.command == "changelog":
-            notes = verify_and_extract_release_notes(args.changelog, version=version)
-            if args.notes_out is not None:
-                args.notes_out.write_text(notes, encoding="utf-8")
-            if args.github_output is not None:
-                with args.github_output.open("a", encoding="utf-8") as fh:
-                    fh.write(f"version={version}\n")
+            _run_changelog_command(args, version=version)
         elif args.command == "dist":
             verify_dist_archives(args.dist_dir, version=version)
     except ValueError as exc:

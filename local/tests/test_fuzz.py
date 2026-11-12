@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import random
+from hashlib import sha3_512
 from typing import TYPE_CHECKING, Protocol, cast
 from unittest.mock import Mock, patch
 
@@ -80,9 +81,11 @@ def test_fuzz_utils_primitives(
     initial_count: int,
 ) -> None:
     rng = random.Random(seed)  # noqa: S311
-    letter: str = utils.create_letter(rng)
+    letter, salt = utils._letter_and_entropy_via_getrandbits(rng.getrandbits, entropy_len)
     assert len(letter) == 1
     assert letter in ASCII_LOWERCASE
+    assert len(salt) == entropy_len
+    assert all(ch in BASE36_ALPHABET for ch in salt)
 
     entropy: str = utils.create_entropy(rng, entropy_len)
     assert len(entropy) == entropy_len
@@ -90,11 +93,6 @@ def test_fuzz_utils_primitives(
 
     with pytest.raises(ValueError, match=r"Cannot create entropy without a length >= 1\."):
         utils.create_entropy(rng, invalid_entropy_len)
-
-    digest: str = utils.create_hash(data)
-    #  A 512-bit SHA3-512 digest has at most 100 base36 digits and create_hash drops the leading digit.
-    assert 1 <= len(digest) <= 99
-    assert all(ch in BASE36_ALPHABET for ch in digest)
 
     fingerprint: str = utils.create_fingerprint(rng, data)
     assert len(fingerprint) == BIG_LENGTH
@@ -167,7 +165,7 @@ def test_fuzz_create_hash_slice_arbitrary_digest(digest_int: int, length: int) -
     mock_hash = Mock()
     mock_hash.digest.return_value = digest_int.to_bytes(64, byteorder="big")
     with patch.object(utils, "sha3_512", return_value=mock_hash):
-        full_hash = utils.create_hash("fuzz")
+        full_hash = utils.base36_encode(digest_int)[1:]
         assert utils._create_hash_slice("fuzz", 1, length) == full_hash[1:length]
         assert utils._create_hash_slice("fuzz", 0, length) == full_hash[:length]
         assert utils._create_hash_slice("fuzz", 0, BIG_LENGTH) == full_hash[:BIG_LENGTH]
@@ -185,7 +183,10 @@ def test_fuzz_create_hash_slice_and_scale_randbits(
     u53: int,
     dyadic_j: int,
 ) -> None:
-    assert utils._create_hash_slice(data, 1, length) == utils.create_hash(data)[1:length]
+    assert (
+        utils._create_hash_slice(data, 1, length)
+        == utils.base36_encode(int.from_bytes(sha3_512(data.encode()).digest(), "big"))[2 : length + 1]
+    )
 
     modulus = BASE36_RADIX**length
     draw_bits = modulus.bit_length() + utils._OVERSAMPLE_BITS

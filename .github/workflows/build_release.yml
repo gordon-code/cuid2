@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   test-lint-scan:
-    if: github.ref == 'refs/heads/main'
+    if: startsWith(github.ref, 'refs/heads/release/')
     permissions:
       contents: read # Needed to check out repository
       security-events: write # Needed by CodeQL to upload SARIF results
@@ -20,7 +20,7 @@ jobs:
   build:
     name: Build Release
     needs: test-lint-scan
-    if: github.ref == 'refs/heads/main'
+    if: startsWith(github.ref, 'refs/heads/release/')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -29,11 +29,14 @@ jobs:
       attestations: write # Needed to persist SLSA build provenance attestations on GitHub
     outputs:
       version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.version.outputs.commit }}
+      latest: ${{ steps.version.outputs.latest }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Set up uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
@@ -42,14 +45,41 @@ jobs:
           enable-cache: false
       - name: Install dependencies
         run: uv sync --locked --no-default-groups --group test --no-install-project
-      - name: Extract version and release notes from CHANGELOG.md
+      - name: Extract version, release commit, and release notes from CHANGELOG.md
         id: version
         run: |
           uv run --no-sync python -m local.verify_release changelog \
+            --resolve-commit \
             --notes-out "$RUNNER_TEMP/release-notes.md" \
             --github-output "$GITHUB_OUTPUT"
+      - name: Verify release branch and release commit
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Invalid version from verify_release: $VERSION" >&2
+            exit 1
+          fi
+          if [[ ! "$COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid release commit from verify_release: $COMMIT" >&2
+            exit 1
+          fi
+          if [[ "$REF_NAME" != "release/$VERSION" ]]; then
+            echo "Workflow must be dispatched on release/$VERSION, got: $REF_NAME" >&2
+            exit 1
+          fi
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if [[ "$HEAD_SHA" != "$COMMIT" || "$EVENT_SHA" != "$COMMIT" ]]; then
+            echo "Release commit $COMMIT, checked-out HEAD $HEAD_SHA, and GITHUB_SHA $EVENT_SHA must all match" >&2
+            exit 1
+          fi
       - name: Build sdist and wheel
         run: uv build --no-preview --no-sources --clear
+      - name: Verify built distributions
+        run: uv run --no-sync python -m local.verify_release dist
       - name: Attest distribution build provenance
         id: attest
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
@@ -82,7 +112,7 @@ jobs:
   publish:
     name: Publish to PyPI
     needs: build
-    if: github.ref == 'refs/heads/main'
+    if: startsWith(github.ref, 'refs/heads/release/')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: pypi
@@ -102,7 +132,7 @@ jobs:
   github-release:
     name: Create GitHub Release
     needs: [build, publish]
-    if: github.ref == 'refs/heads/main'
+    if: startsWith(github.ref, 'refs/heads/release/')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -128,9 +158,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.build.outputs.version }}
+          COMMIT: ${{ needs.build.outputs.commit }}
+          LATEST: ${{ needs.build.outputs.latest }}
         run: |
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "Invalid version from build job: $VERSION" >&2
+            exit 1
+          fi
+          if [[ ! "$COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid commit from build job: $COMMIT" >&2
+            exit 1
+          fi
+          if [[ ! "$LATEST" =~ ^(true|false)$ ]]; then
+            echo "Invalid latest flag from build job: $LATEST" >&2
             exit 1
           fi
           BUNDLE_FILE="$(find provenance -type f | head -n 1)"
@@ -140,12 +180,24 @@ jobs:
           fi
           cp "$BUNDLE_FILE" "provenance/cuid2-${VERSION}.sigstore.json"
           jq -ce '.dsseEnvelope' "$BUNDLE_FILE" > "provenance/cuid2-${VERSION}.intoto.jsonl"
+          if TAG_REF="$(gh api "repos/$GH_REPO/git/ref/tags/v$VERSION" 2>&1)"; then
+            echo "Tag v$VERSION already exists; refusing to attach the release to it: $TAG_REF" >&2
+            exit 1
+          elif [[ "$TAG_REF" != *"HTTP 404"* ]]; then
+            echo "Could not verify that tag v$VERSION is absent: $TAG_REF" >&2
+            exit 1
+          fi
           gh release create "v$VERSION" \
             --repo "$GH_REPO" \
-            --target "$GITHUB_SHA" \
+            --target "$COMMIT" \
             --title "v$VERSION" \
             --notes-file release-notes/release-notes.md \
-            --latest \
+            --latest="$LATEST" \
             dist/*.whl dist/*.tar.gz \
             "provenance/cuid2-${VERSION}.sigstore.json" \
             "provenance/cuid2-${VERSION}.intoto.jsonl"
+          TAG_COMMIT="$(gh api "repos/$GH_REPO/commits/v$VERSION" --jq .sha)"
+          if [[ "$TAG_COMMIT" != "$COMMIT" ]]; then
+            echo "Tag v$VERSION targets $TAG_COMMIT, expected $COMMIT" >&2
+            exit 1
+          fi

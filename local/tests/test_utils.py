@@ -6,6 +6,7 @@ import random
 import string
 import threading
 import time
+from hashlib import sha3_512
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
@@ -91,87 +92,6 @@ class TestBase36Encode:
             utils.base36_encode(2**10000)
             == "2kqaqr9n8eopgtn6k95g23riodx51p4o3jwyma480okqkygdk2cn232qvv2svfuvbzb5dy9yeoqceom839h5k1yzf6izbx3rnrjx4pfili0r67ebjqnjhwqevgboilk8yf8ueh7pnd28hk2xttyvgmiqcew98grghfhqz4xe93yiifh69uh4kxt2ld4ba87izsm9u323ekhjh37k5tsyn9of1gds6lzq526i1r3f70gd74z9ni2b2ej456p7frfijzu9hpdkw1vpsuwds7zpbr7uwcu2qbb0o9djiehjcltlpptcqg19sxajz8vyffjeuajmdew0q9j9h7ovpgmyat92n3rx0fgfsu4kluaoi146z5v1t00q073fe6f6ijdue1g06lvqx9ijmezax2tooljo5c362eil7nkkz91d0n5ghfe1rhofsyujw4209klyhjzcu10ycc0oc19pq7sqo1ugs10ym59phjo752siiuj56z2yns5dtodwff92we0a9sgho98t2jgqtgiwilmcmksi5aighqi8h5pxsvyc6owrans06be91u2gtwi43s3i46rjkvpn85xzco0dgwfzzp8hto1axij5w3j69snadxvc0ed3971r936qzc0cyou95081lvplzcrid76kf8wbm68tj3zv4j9fj4dnl19etn1koc3hx8eixx85uda4rv92j3dl0ib8ixgeywnjmivv3kmich1balqsp1hd4b88r7aephwoc9uphu9u2eorlvjmquvqziuu7w1usbf3lmdx289lkdeyecnymd88xlb7thrlmxvzjlmnxfjzmqcnaie4sfz81mlqq6n48b4vdkh7gimhfy9rddxdy3fi2faochb1cnikvkwdz02qa5v9p3l7cnzhxqwhrqdhrcawfl2lbzvs26uzf2fyj2u5i7gv750aitt8drg8md9i551u8hpaw28r1p3qi29soq8d2iakhw2ezzeux71zlex537kgs18lgk56nw1gbrk00oqowzb5t117bvgp6221nr5slvxz3ozr2gqdzume9xuqpeeza98qd009p50qkmghyb3tqsyhmo72h9ptv98w6dh1vwrja2oa5lfi2ei234f2haziqh3jp0v8vv40tur6cydgv8dohm20yurg6gymgjgm3pb8q2hf57hxioeiyild50rersbfumcyc4ij5nhxavlg5s976mkphr0wurzuri1uk44vmrw6w3mftfozkxvo14aii0xct1t6czu9w9njatnx9igw51aqy3c7rjz7vugf0yzlo6t61a72ddp7lrd9ymgyca271cr17f16fojq5g688h6rgxg1hhb5zzedw23723s93mai3f603gd4utc7levfzpdhqt7l7t4b70efvq029zofoqrzgno8bpyg5vgz12jdun0of0ua47zzpa7wk0psnrq0yal1isbf6hbnlvfundz2hbrl4mfxnxxgobkv2jyaag9872k45x8uwau1mlzx8xhtc43829wyauwejfqifs4em5ipgih0ypn8bfjyq6b3blevcmrostiqldnqa7znph1zfm7xdjmhghmx57qit1ojxjkjliendm98redq1xtai822suagwdzhq1y8kf523m0nslhvjomttuydoqqe6pr5rf76aqe3pwx6pmcrub3gmvg6scojyjj4o429qjpzjsehoqe8y6rivp7i904dricmv1l75cfomy5x92cd34m7r8k886i7o58krwj5257b9wfq7dcj4mwq76vctcezae4v8jtz29fsjl2lbjqhxfjb8itp6x89ems9fga26i7t7zl5njmbqtp2jt9ommmhiz3ty7izh9gk5dxr26n9bz6j3swbu980hfd9v0vbdrn72ra3eiawckwkvhmdgfpi12cjamr0jf22jf268sg"  # noqa: E501
         )
-
-
-class TestCreateLetter:
-    #  Tests that create_letter function returns a lowercase letter
-    def test_happy_path_create_letter(self: TestCreateLetter, mocker: Mock) -> None:
-        mock_random = mocker.Mock()
-        mock_random.getrandbits.return_value = 1 << (utils._LETTER_DRAW_BITS - 1)
-        result = utils.create_letter(random_generator=mock_random)
-        assert result == "n"
-        assert result in string.ascii_lowercase
-        mock_random.getrandbits.assert_called_once_with(utils._LETTER_DRAW_BITS)
-
-    #  Tests that create_letter function returns a lowercase letter when random_generator returns 0
-    def test_edge_case_create_letter_zero(self: TestCreateLetter, mocker: Mock) -> None:
-        mock_random = mocker.Mock()
-        mock_random.getrandbits.return_value = 0
-        result = utils.create_letter(random_generator=mock_random)
-        assert result == "a"
-        assert result in string.ascii_lowercase
-        mock_random.getrandbits.assert_called_once_with(utils._LETTER_DRAW_BITS)
-
-    #  Tests that create_letter function returns a lowercase letter when random_generator returns max bits
-    def test_edge_case_create_letter_one(self: TestCreateLetter, mocker: Mock) -> None:
-        mock_random = mocker.Mock()
-        mock_random.getrandbits.return_value = (1 << utils._LETTER_DRAW_BITS) - 1
-        result = utils.create_letter(random_generator=mock_random)
-        assert result == "z"
-        assert result in string.ascii_lowercase
-        mock_random.getrandbits.assert_called_once_with(utils._LETTER_DRAW_BITS)
-
-
-class TestCreateHash:
-    #  Tests that the output of create_hash() is always a string of length 98
-    def test_hash_output_length(self: TestCreateHash) -> None:
-        assert len(utils.create_hash()) == 98
-
-    #  Tests that create_hash() returns the same output for the same input
-    def test_same_output_for_same_input(self: TestCreateHash) -> None:
-        input_str = "test string"
-        assert utils.create_hash(input_str) == utils.create_hash(input_str)
-
-    #  Tests that create_hash() returns a hash for an empty string input
-    def test_empty_string_input(self: TestCreateHash) -> None:
-        assert utils.create_hash("")
-
-    #  Tests that create_hash() returns a hash for a string input containing special characters
-    def test_special_characters_input(self: TestCreateHash) -> None:
-        input_str = "test!@#$%^&*()_+-=[]{}|;':\",./<>? string"
-        assert utils.create_hash(input_str)
-
-    #  Tests that create_hash() returns a hash for a very long string input
-    def test_very_long_string_input(self: TestCreateHash) -> None:
-        input_str = "a" * 1000000
-        assert utils.create_hash(input_str)
-        assert len(utils.create_hash(str(input_str))) == 98
-
-    #  Tests that create_hash() can handle large input strings
-    def test_large_input_strings(self: TestCreateHash) -> None:
-        input_str = "a" * 10000
-        assert utils.create_hash(input_str)
-        assert len(utils.create_hash(str(input_str))) == 98
-
-    #  Tests that create_hash() can handle very large integers for base36 encoding
-    def test_base36_encoding(self: TestCreateHash) -> None:
-        input_int = 99999999999999999999999999999999999999999999999999999999999999999999999999
-        assert utils.create_hash(str(input_int))
-        assert len(utils.create_hash(str(input_int))) == 98
-
-    #  Tests that create_hash() raises a TypeError if the input is not a string
-    def test_non_string_input_types(self: TestCreateHash) -> None:
-        with pytest.raises(AttributeError):
-            utils.create_hash(12345)  # type: ignore[arg-type]
-
-    #  Tests that create_hash() uses sha3_512 directly without a sha512 fallback attribute
-    def test_create_hash_uses_sha3_512_directly(self: TestCreateHash, mocker: Mock) -> None:
-        assert not hasattr(utils, "sha512")
-        mock_hash = mocker.Mock()
-        mock_hash.digest.return_value = b"\x08" + b"\x00" * 63
-        mock_sha3 = mocker.patch("cuid2.utils.sha3_512", return_value=mock_hash)
-        assert len(utils.create_hash("test")) == 98
-        mock_sha3.assert_called_once_with(b"test")
 
 
 class TestCreateEntropy:
@@ -527,9 +447,12 @@ class TestFixedPointScalingAndHashSlice:
 
     def test_low_bit_stuck_random_immunity(self: TestFixedPointScalingAndHashSlice) -> None:
         rng = _LowBitStuckRandom(42)
-        assert rng.getrandbits(utils._LETTER_DRAW_BITS) % 4 == 0
+        k_fused = (len(utils.ASCII_LOWERCASE) * 36**24).bit_length() + utils._OVERSAMPLE_BITS
+        assert rng.getrandbits(k_fused) % 4 == 0
 
-        assert {utils.create_letter(rng) for _ in range(500)} == set(utils.ASCII_LOWERCASE)
+        assert {utils._letter_and_entropy_via_getrandbits(rng.getrandbits, 24)[0] for _ in range(500)} == set(
+            utils.ASCII_LOWERCASE,
+        )
 
         rng_entropy = _LowBitStuckRandom(42)
         entropy_draws = [utils.create_entropy(rng_entropy, 24) for _ in range(500)]
@@ -550,13 +473,20 @@ class TestFixedPointScalingAndHashSlice:
         boundary_int: int,
         length: int,
     ) -> None:
+        assert not hasattr(utils, "sha512")
         mock_hash = mocker.Mock()
         mock_hash.digest.return_value = boundary_int.to_bytes(64, byteorder="big")
-        mocker.patch("cuid2.utils.sha3_512", return_value=mock_hash)
+        mock_sha3 = mocker.patch("cuid2.utils.sha3_512", return_value=mock_hash)
 
-        full_hash = utils.create_hash("boundary")
+        full_hash = utils.base36_encode(boundary_int)[1:]
         assert utils._create_hash_slice("boundary", 0, length) == full_hash[:length]
         assert utils._create_hash_slice("boundary", 1, length) == full_hash[1:length]
+        assert mock_sha3.call_count == 2
+
+    def test_create_letter_and_create_hash_not_exported(self: TestFixedPointScalingAndHashSlice) -> None:
+        assert not hasattr(utils, "create_letter")
+        assert not hasattr(utils, "_LETTER_DRAW_BITS")
+        assert not hasattr(utils, "create_hash")
 
 
 class _LowResolutionRandom(random.Random):
@@ -614,7 +544,7 @@ class TestRandomOnlyGenerators:
             expected = (_per_character_letter(reference), _per_character_salt(reference, length))
             assert utils._letter_and_entropy_via_random(rng_type(seed), length) == expected
 
-            assert utils.create_letter(rng_type(seed)) == _per_character_letter(rng_type(seed).random)
+            assert utils._letter_via_random(rng_type(seed)) == _per_character_letter(rng_type(seed).random)
             assert utils.create_entropy(rng_type(seed), length) == _per_character_salt(rng_type(seed).random, length)
             expected_count = math.floor(rng_type(seed).random() * utils.INITIAL_COUNT_MAX)
             assert utils._create_initial_count(rng_type(seed)) == expected_count
@@ -650,7 +580,8 @@ class TestRandomOnlyGenerators:
         letter = _per_character_letter(reference)
         salt = _per_character_salt(reference, 24)
         hash_input = utils.base36_encode(time_ns) + salt + utils.base36_encode(start_count + 1) + "fp"
-        assert cuid.generate() == letter + utils.create_hash(hash_input)[1:24]
+        expected_tail = utils.base36_encode(int.from_bytes(sha3_512(hash_input.encode()).digest(), "big"))[2:25]
+        assert cuid.generate() == letter + expected_tail
 
         varied = Cuid(random_generator=_RandomOnlyRandom)
         assert {varied.generate()[0] for _ in range(500)} == set(utils.ASCII_LOWERCASE)
