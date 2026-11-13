@@ -7,7 +7,7 @@ import io
 import os
 import sys
 from argparse import SUPPRESS, Action, ArgumentParser, ArgumentTypeError, RawDescriptionHelpFormatter
-from contextlib import contextmanager, suppress
+from contextlib import suppress
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -18,7 +18,7 @@ __all__ = ["main"]
 
 if TYPE_CHECKING:
     from argparse import Namespace
-    from collections.abc import Generator, Iterable, Iterator, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Sequence
     from random import Random
     from typing import TextIO
 
@@ -31,18 +31,23 @@ def _is_closed_stream_error(exc: OSError | ValueError) -> bool:
     return isinstance(exc, ValueError | BrokenPipeError) or exc.errno == errno.EBADF
 
 
-@contextmanager
-def _mask_closed_stdout() -> Generator[None, None, None]:
-    # Python 3.14+ argparse._colorize calls sys.stdout.fileno() / isatty(), raising ValueError on closed files.
-    stdout = sys.stdout
-    if isinstance(stdout, io.IOBase) and stdout.closed:
-        sys.stdout = None
-        try:
-            yield
-        finally:
-            sys.stdout = stdout
-    else:
-        yield
+def _stdout_cannot_probe_color(stdout: TextIO | None) -> bool:
+    if stdout is None or getattr(stdout, "closed", False) is True:
+        return True
+    try:
+        os.isatty(stdout.fileno())
+    except (AttributeError, OSError, TypeError, ValueError):
+        return True
+    return False
+
+
+def _disable_parser_color(
+    parser: ArgumentParser,
+    formatter_cls: Callable[..., object] = RawDescriptionHelpFormatter,
+) -> None:
+    # Python 3.14+ HelpFormatter._set_color probes sys.stdout and raises ValueError on closed streams.
+    if hasattr(formatter_cls, "_set_color"):
+        vars(parser).update(formatter_class=partial(formatter_cls, color=False), color=False)
 
 
 def _redirect_stdout_to_devnull(stdout: TextIO) -> None:
@@ -174,6 +179,8 @@ def _build_parser() -> ArgumentParser:
         formatter_class=RawDescriptionHelpFormatter,
         add_help=False,
     )
+    if _stdout_cannot_probe_color(sys.stdout):
+        _disable_parser_color(parser)
     parser.add_argument(
         "length",
         nargs="?",
@@ -274,7 +281,8 @@ def _iter_candidates(check_arg: str) -> Iterator[str]:
         msg = "stdin is closed"
         raise ValueError(msg)
     if isinstance(stdin, io.TextIOWrapper):
-        stdin.reconfigure(encoding="utf-8", errors="surrogateescape")
+        with suppress(io.UnsupportedOperation):
+            stdin.reconfigure(encoding="utf-8", errors="surrogateescape")
     empty = True
     for line in stdin:
         candidate = line.rstrip("\r\n")
@@ -333,11 +341,10 @@ def main(args: Sequence[str] | None = None) -> None:
         ``--version``/``--help`` modes, or exit code ``2`` on invalid arguments,
         including a length outside ``MIN_LENGTH``..``BIG_LENGTH`` (2..32).
     """
-    with _mask_closed_stdout():
-        parser = _build_parser()
-        cli_args = parser.parse_args(args)
-        target_length = _resolve_length(parser, cli_args)
-        _validate_mode_flags(parser, cli_args)
+    parser = _build_parser()
+    cli_args = parser.parse_args(args)
+    target_length = _resolve_length(parser, cli_args)
+    _validate_mode_flags(parser, cli_args)
 
     if cli_args.check is not None:
         exit_code = _run_check(cli_args.check, target_length, quiet=cli_args.quiet)

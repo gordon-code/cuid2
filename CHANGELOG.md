@@ -19,7 +19,7 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 ### Fixed
 
 - `cuid2 --check -` now decodes `stdin` as UTF-8 (it used the locale encoding before, which only differs on Windows before Python 3.15 and in non-UTF-8 locales) and treats lines containing invalid UTF-8 bytes as invalid identifiers (escaped via `ascii()`), exiting with code 1 instead of crashing with a `UnicodeDecodeError` traceback.
-- The `cuid2` CLI no longer crashes with an unhandled traceback when `stdin` or `stdout` is closed (`<&-`, `>&-`): generation and `cuid2 --check <id> -q` exit with code 0 when `stdout` is closed, while non-quiet `--check` with closed `stdout` and `--check -` with closed `stdin` exit with code 1.
+- The `cuid2` CLI no longer crashes with an unhandled traceback when `stdin` or `stdout` is closed (`<&-`, `>&-`): generation, `-h`/`--help`, and `-V`/`--version` exit with code 0 and `cuid2 --check <id> -q` preserves its validation exit status (0 or 1) when `stdout` is closed, while non-quiet `--check` with closed `stdout` and `--check -` with closed `stdin` exit with code 1.
 
 ## [3.0.0] - 2026-11-08
 

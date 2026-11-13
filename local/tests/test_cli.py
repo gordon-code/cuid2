@@ -8,6 +8,7 @@ import os
 import runpy
 import subprocess
 import sys
+import tempfile
 from typing import TYPE_CHECKING
 
 import pytest
@@ -452,6 +453,15 @@ class TestCli:
             assert captured.out == f"{valid_id}: valid\na\\udc80: invalid\n"
             assert captured.err == ""
 
+        with monkeypatch.context() as mp:
+            preread_stdin = io.TextIOWrapper(io.BytesIO(f"header\n{valid_id}\n".encode()), encoding="utf-8")
+            assert preread_stdin.readline() == "header\n"
+            mp.setattr("sys.stdin", preread_stdin)
+            _assert_cli_exits(["--check", "-"], 0)
+            captured = capsys.readouterr()
+            assert captured.out == f"{valid_id}: valid\n"
+            assert captured.err == ""
+
     def test_cli_closed_stdio(
         self: TestCli,
         monkeypatch: pytest.MonkeyPatch,
@@ -544,6 +554,106 @@ class TestCli:
         _assert_cli_exits(["-h"], 0)
         assert chunks == []
         assert capsys.readouterr().err == ""
+
+    def test_cli_closed_non_iobase_stdout_and_midstream_stdin(
+        self: TestCli,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Tests closed non-IOBase stdout wrappers and mid-stream stdin failures after a valid candidate."""
+        valid_id = create_id()
+
+        with monkeypatch.context() as mp:
+            with tempfile.NamedTemporaryFile(mode="w+", encoding="utf-8") as tmp_out:
+                pass
+            assert not isinstance(tmp_out, io.IOBase)
+            assert tmp_out.closed is True
+            mp.setattr("sys.stdout", tmp_out)
+            cli_main([])
+            _assert_cli_exits(["-h"], 0)
+            _assert_cli_exits(["-V"], 0)
+            _assert_cli_exits(["--check", valid_id, "-q"], 0)
+            _assert_cli_exits(["--check", valid_id], 1)
+            assert sys.stdout is tmp_out
+
+        for midstream_exc in (
+            UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
+            OSError(errno.EBADF, "Bad file descriptor"),
+        ):
+            for extra_args, expected_out in (([], f"{valid_id}: valid\n"), (["-q"], "")):
+
+                class _MidstreamFailStdin:
+                    def __init__(self: _MidstreamFailStdin, err: Exception) -> None:
+                        self._err = err
+
+                    def __iter__(self: _MidstreamFailStdin) -> Iterator[str]:
+                        yield f"{valid_id}\n"
+                        raise self._err
+
+                with monkeypatch.context() as mp:
+                    mp.setattr("sys.stdin", _MidstreamFailStdin(midstream_exc))
+                    _assert_cli_exits(["--check", "-", *extra_args], 1)
+                    captured = capsys.readouterr()
+                    assert captured.out == expected_out
+                    assert captured.err == ""
+
+    def test_cli_closed_stdout_proxy_and_parser_color_guard(
+        self: TestCli,
+        monkeypatch: pytest.MonkeyPatch,
+        mocker: Mock,
+    ) -> None:
+        """Tests closed stdout proxies, Mock stdout, open real-fd stdout, and _disable_parser_color."""
+        valid_id = create_id()
+        closed_backing = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+        closed_backing.close()
+
+        class _ClosedProxy:
+            write = closed_backing.write
+            flush = closed_backing.flush
+            fileno = closed_backing.fileno
+
+            @staticmethod
+            def isatty() -> bool:
+                return False
+
+        proxy = _ClosedProxy()
+        assert not hasattr(proxy, "closed")
+        with monkeypatch.context() as mp:
+            mp.setattr("sys.stdout", proxy)
+            cli_main([])
+            _assert_cli_exits(["-h"], 0)
+            _assert_cli_exits(["--check", valid_id], 1)
+            assert sys.stdout is proxy
+
+        with monkeypatch.context() as mp:
+            mock_out = mocker.Mock()
+            mp.setattr("sys.stdout", mock_out)
+            _assert_cli_exits(["-V"], 0)
+            mock_out.write.assert_called_once()
+
+        with tempfile.NamedTemporaryFile(mode="w+", encoding="utf-8") as open_tmp, monkeypatch.context() as mp:
+            mp.setattr("sys.stdout", open_tmp)
+            cli_main([])
+            open_tmp.seek(0)
+            assert is_cuid(open_tmp.read().strip(), min_length=DEFAULT_LENGTH, max_length=DEFAULT_LENGTH) is True
+
+        class _LegacyFormatter:
+            pass
+
+        class _ColorFormatter:
+            @staticmethod
+            def _set_color(color: bool) -> None:
+                del color
+
+        parser_legacy = cuid2.cli._build_parser()
+        orig_cls = parser_legacy.formatter_class
+        cuid2.cli._disable_parser_color(parser_legacy, _LegacyFormatter)
+        assert parser_legacy.formatter_class is orig_cls
+
+        parser_color = cuid2.cli._build_parser()
+        cuid2.cli._disable_parser_color(parser_color, _ColorFormatter)
+        assert parser_color.formatter_class is not orig_cls
+        assert vars(parser_color)["color"] is False
 
     def test_cli_real_io_errors_propagate(
         self: TestCli,

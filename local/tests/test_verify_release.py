@@ -378,6 +378,7 @@ def _git(repo: Path, *args: str) -> str:
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
     ).stdout.strip()
 
 
@@ -485,6 +486,31 @@ class TestResolveReleaseCommit:
         _git(tmp_path, "tag", "v2.1.0")
         with pytest.raises(ValueError, match=r"Release tag v2\.1\.0 already exists"):
             resolve_release_commit(tmp_path, pyproject_path=pyproject, version="2.1.0", prev_version="2.0.4")
+
+        failed_notes = tmp_path / "failed-notes.md"
+        failed_gh_out = tmp_path / "failed-github-output.txt"
+        assert (
+            main(
+                [
+                    "changelog",
+                    "--pyproject",
+                    str(pyproject),
+                    "--changelog",
+                    str(changelog),
+                    "--resolve-commit",
+                    "--notes-out",
+                    str(failed_notes),
+                    "--github-output",
+                    str(failed_gh_out),
+                ],
+            )
+            == 1
+        )
+        failed_captured = capsys.readouterr()
+        assert failed_captured.out == ""
+        assert "Release tag v2.1.0 already exists" in failed_captured.err
+        assert not failed_notes.exists()
+        assert not failed_gh_out.exists()
 
         _git(tmp_path, "tag", "-d", "v2.1.0")
         _git(tmp_path, "tag", "v2.2.0")
@@ -603,4 +629,67 @@ class TestResolveReleaseCommit:
                 pyproject_path=tmp_path / "pyproject.toml",
                 version="2.1.0",
                 prev_version="2.0.4",
+            )
+
+    def test_resolve_release_commit_historical_pyproject_edge_cases(self, tmp_path: Path) -> None:
+        dyn_repo = tmp_path / "dynamic"
+        dyn_repo.mkdir()
+        _git(dyn_repo, "init", "-b", "main")
+        _write_lf(dyn_repo / "pyproject.toml", '[project]\nname = "cuid2"\ndynamic = ["version"]\n')
+        _git(dyn_repo, "add", "pyproject.toml")
+        _git(dyn_repo, "commit", "-q", "-m", "chore: dynamic version")
+        _write_lf(dyn_repo / "pyproject.toml", '[project]\nname = "cuid2"\nversion = "2.1.0"\n')
+        _git(dyn_repo, "add", "pyproject.toml")
+        _git(dyn_repo, "commit", "-q", "-m", "chore: static 2.1.0")
+        dyn_bump_sha = _git(dyn_repo, "rev-parse", "HEAD")
+        assert (
+            resolve_release_commit(
+                dyn_repo,
+                pyproject_path=dyn_repo / "pyproject.toml",
+                version="2.1.0",
+                prev_version=None,
+            )
+            == dyn_bump_sha
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"Version before release commit .* is absent, but CHANGELOG\.md lists previous release 2\.0\.4",
+        ):
+            resolve_release_commit(
+                dyn_repo,
+                pyproject_path=dyn_repo / "pyproject.toml",
+                version="2.1.0",
+                prev_version="2.0.4",
+            )
+
+        bad_toml_repo = tmp_path / "bad_toml"
+        bad_toml_repo.mkdir()
+        _git(bad_toml_repo, "init", "-b", "main")
+        _write_lf(bad_toml_repo / "pyproject.toml", "[project\nbroken = true\n")
+        _git(bad_toml_repo, "add", "pyproject.toml")
+        _git(bad_toml_repo, "commit", "-q", "-m", "chore: broken toml")
+        _write_lf(bad_toml_repo / "pyproject.toml", '[project]\nname = "cuid2"\nversion = "2.1.0"\n')
+        _git(bad_toml_repo, "add", "pyproject.toml")
+        _git(bad_toml_repo, "commit", "-q", "-m", "chore: fix toml and set 2.1.0")
+        with pytest.raises(ValueError, match=r"Cannot parse pyproject\.toml at"):
+            resolve_release_commit(
+                bad_toml_repo,
+                pyproject_path=bad_toml_repo / "pyproject.toml",
+                version="2.1.0",
+                prev_version=None,
+            )
+
+        untracked_repo = tmp_path / "untracked"
+        untracked_repo.mkdir()
+        _git(untracked_repo, "init", "-b", "main")
+        _write_lf(untracked_repo / "README.md", "# cuid2\n")
+        _git(untracked_repo, "add", "README.md")
+        _git(untracked_repo, "commit", "-q", "-m", "docs: add readme")
+        _write_lf(untracked_repo / "pyproject.toml", '[project]\nname = "cuid2"\nversion = "2.1.0"\n')
+        with pytest.raises(ValueError, match=r"No first-parent commit reachable from HEAD touches pyproject\.toml"):
+            resolve_release_commit(
+                untracked_repo,
+                pyproject_path=untracked_repo / "pyproject.toml",
+                version="2.1.0",
+                prev_version=None,
             )

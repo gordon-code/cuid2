@@ -312,6 +312,7 @@ def _run_git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
         check=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
 
 
@@ -400,11 +401,14 @@ def _find_bump_commit(
     if tip != version:
         msg = f"Committed {rel_pyproject} at HEAD declares version {tip!r}, expected {version}"
         raise ValueError(msg)
-    idx = 0
-    while idx + 1 < len(shas) and _project_version_at(repo_root, shas[idx + 1], rel_pyproject) == version:
-        idx += 1
-    bump = shas[idx]
-    prev = _project_version_at(repo_root, shas[idx + 1], rel_pyproject) if idx + 1 < len(shas) else None
+    bump = shas[0]
+    prev: str | None = None
+    for sha in shas[1:]:
+        candidate = _project_version_at(repo_root, sha, rel_pyproject)
+        if candidate != version:
+            prev = candidate
+            break
+        bump = sha
     if prev_version is not None and prev != prev_version:
         msg = (
             f"Version before release commit {bump} is {prev or 'absent'}, "
@@ -452,16 +456,12 @@ def resolve_release_commit(
     _assert_tag_available(repo_root, version)
     _assert_version_above_same_major_tags(repo_root, version)
     rel_pyproject = pyproject_path.resolve().relative_to(repo_root.resolve()).as_posix()
-    bump = _find_bump_commit(
+    return _find_bump_commit(
         repo_root,
         rel_pyproject,
         version=version,
         prev_version=prev_version,
     )
-    if _COMMIT_SHA_RE.fullmatch(bump) is None:
-        msg = f"Resolved release commit is not a 40-character hex SHA: {bump}"
-        raise ValueError(msg)
-    return bump
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -497,7 +497,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--github-output",
         type=Path,
         default=None,
-        help="Optional path to GITHUB_OUTPUT file to append version=<version>.",
+        help=(
+            "Optional path to GITHUB_OUTPUT file to append version=<version> "
+            "(plus commit=<sha> and latest=<true|false> with --resolve-commit)."
+        ),
     )
     changelog_parser.add_argument(
         "--resolve-commit",
