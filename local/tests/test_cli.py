@@ -637,23 +637,33 @@ class TestCli:
             open_tmp.seek(0)
             assert is_cuid(open_tmp.read().strip(), min_length=DEFAULT_LENGTH, max_length=DEFAULT_LENGTH) is True
 
-        class _LegacyFormatter:
+        class _BuiltinInitFormatter:
             pass
 
+        class _PyNoColorFormatter:
+            def __init__(self: _PyNoColorFormatter, prog: str) -> None:
+                self.prog = prog
+
         class _ColorFormatter:
-            @staticmethod
-            def _set_color(color: bool) -> None:
-                del color
+            def __init__(self: _ColorFormatter, prog: str, *, color: bool = True) -> None:
+                self.prog = prog
+                self.color = color
 
-        parser_legacy = cuid2.cli._build_parser()
-        orig_cls = parser_legacy.formatter_class
-        cuid2.cli._disable_parser_color(parser_legacy, _LegacyFormatter)
-        assert parser_legacy.formatter_class is orig_cls
+        parser_no_color_attr = cuid2.cli._build_parser()
+        vars(parser_no_color_attr).pop("color", None)
+        orig_cls = parser_no_color_attr.formatter_class
+        cuid2.cli._disable_parser_color(parser_no_color_attr, _BuiltinInitFormatter)
+        assert "color" not in vars(parser_no_color_attr)
+        assert parser_no_color_attr.formatter_class is orig_cls
 
-        parser_color = cuid2.cli._build_parser()
-        cuid2.cli._disable_parser_color(parser_color, _ColorFormatter)
-        assert parser_color.formatter_class is not orig_cls
-        assert vars(parser_color)["color"] is False
+        cuid2.cli._disable_parser_color(parser_no_color_attr, _PyNoColorFormatter)
+        assert parser_no_color_attr.formatter_class is orig_cls
+
+        parser_with_color = cuid2.cli._build_parser()
+        vars(parser_with_color)["color"] = True
+        cuid2.cli._disable_parser_color(parser_with_color, _ColorFormatter)
+        assert parser_with_color.formatter_class is not orig_cls
+        assert vars(parser_with_color)["color"] is False
 
     def test_cli_real_io_errors_propagate(
         self: TestCli,

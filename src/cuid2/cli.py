@@ -45,9 +45,13 @@ def _disable_parser_color(
     parser: ArgumentParser,
     formatter_cls: Callable[..., object] = RawDescriptionHelpFormatter,
 ) -> None:
-    # Python 3.14+ HelpFormatter._set_color probes sys.stdout and raises ValueError on closed streams.
-    if hasattr(formatter_cls, "_set_color"):
-        vars(parser).update(formatter_class=partial(formatter_cls, color=False), color=False)
+    # Python 3.14+ ArgumentParser(color=...) and Python 3.14 HelpFormatter(color=...) probe sys.stdout via _colorize.
+    parser_vars = vars(parser)
+    if "color" in parser_vars:
+        parser_vars["color"] = False
+    init_code = getattr(getattr(formatter_cls, "__init__", None), "__code__", None)
+    if init_code is not None and "color" in init_code.co_varnames:
+        parser_vars["formatter_class"] = partial(formatter_cls, color=False)
 
 
 def _redirect_stdout_to_devnull(stdout: TextIO) -> None:
