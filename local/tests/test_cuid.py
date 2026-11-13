@@ -126,15 +126,61 @@ class TestCuid:
         with pytest.raises(TypeError):
             cuid_wrapper(length=invalid_length)
 
-    #  Tests that integer-like lengths (int subclasses) are accepted and produce IDs of exactly that length.
+    #  Tests that integer-like lengths (IntEnum and pure __index__ objects) are accepted and normalized to int.
     def test_generate_integer_like_length(self: TestCuid) -> None:
         class Size(IntEnum):
             SHORT = 10
 
-        assert len(Cuid(length=Size.SHORT).generate()) == Size.SHORT
+        class _IndexOnly:
+            def __init__(self: _IndexOnly, value: int) -> None:
+                self._value = value
+
+            def __index__(self: _IndexOnly) -> int:
+                return self._value
+
+        index_ten: Any = _IndexOnly(10)
+        cuid_enum = Cuid(length=Size.SHORT)
+        cuid_index = Cuid(length=index_ten)
+        assert type(cuid_enum._length) is int
+        assert type(cuid_index._length) is int
+        assert len(cuid_enum.generate()) == Size.SHORT
+        assert len(cuid_index.generate()) == 10
         assert len(Cuid().generate(length=Size.SHORT)) == Size.SHORT
+        assert len(Cuid().generate(length=index_ten)) == 10
         assert len(create_id(length=Size.SHORT)) == Size.SHORT
-        assert len(cuid_wrapper(length=Size.SHORT)()) == Size.SHORT
+        assert len(create_id(length=index_ten)) == 10
+
+        wrapped_enum = cuid_wrapper(length=Size.SHORT)
+        assert isinstance(wrapped_enum, partial)
+        assert type(wrapped_enum.keywords["length"]) is int
+        assert len(wrapped_enum()) == Size.SHORT
+
+        wrapped_index = cuid_wrapper(length=index_ten)
+        assert isinstance(wrapped_index, partial)
+        assert type(wrapped_index.keywords["length"]) is int
+        assert len(wrapped_index()) == 10
+
+        cuid = Cuid()
+        for raw in (1, 0, -1):
+            bad_low: Any = _IndexOnly(raw)
+            with pytest.raises(ValueError, match=r"Length must be at least 2 characters\."):
+                Cuid(length=bad_low)
+            with pytest.raises(ValueError, match=r"Length must be at least 2 characters\."):
+                cuid.generate(length=bad_low)
+            with pytest.raises(ValueError, match=r"Length must be at least 2 characters\."):
+                create_id(length=bad_low)
+            with pytest.raises(ValueError, match=r"Length must be at least 2 characters\."):
+                cuid_wrapper(length=bad_low)
+
+        bad_high: Any = _IndexOnly(BIG_LENGTH + 1)
+        with pytest.raises(ValueError, match=r"Length must never exceed 32 characters\."):
+            Cuid(length=bad_high)
+        with pytest.raises(ValueError, match=r"Length must never exceed 32 characters\."):
+            cuid.generate(length=bad_high)
+        with pytest.raises(ValueError, match=r"Length must never exceed 32 characters\."):
+            create_id(length=bad_high)
+        with pytest.raises(ValueError, match=r"Length must never exceed 32 characters\."):
+            cuid_wrapper(length=bad_high)
 
     #  Tests that specification boundary lengths MIN_LENGTH (2) and BIG_LENGTH (32) generate valid IDs of that length.
     @pytest.mark.parametrize("valid_length", [MIN_LENGTH, BIG_LENGTH])

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import errno
+import io
 import os
 import sys
 from argparse import SUPPRESS, Action, ArgumentParser, ArgumentTypeError, RawDescriptionHelpFormatter
@@ -16,25 +18,87 @@ __all__ = ["main"]
 
 if TYPE_CHECKING:
     from argparse import Namespace
-    from collections.abc import Iterable, Iterator, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Sequence
     from random import Random
+    from typing import TextIO
 
 _SLUG_LENGTH: int = 5
 
 
-def _write_lines(lines: Iterable[str]) -> None:
+def _is_closed_stream_error(exc: OSError | ValueError) -> bool:
+    # A closed Python file raises ValueError; a closed or broken descriptor raises EBADF or BrokenPipeError
+    # (matched by type: a bare BrokenPipeError() carries no errno).
+    return isinstance(exc, ValueError | BrokenPipeError) or exc.errno == errno.EBADF
+
+
+def _stdout_cannot_probe_color(stdout: TextIO | None) -> bool:
+    if stdout is None or getattr(stdout, "closed", False) is True:
+        return True
     try:
-        for line in lines:
-            sys.stdout.write(line)
-        sys.stdout.flush()
-    except BrokenPipeError:
-        with suppress(OSError):
-            stdout_fd = sys.stdout.fileno()
-            devnull = os.open(os.devnull, os.O_WRONLY)
-            try:
-                os.dup2(devnull, stdout_fd)
-            finally:
-                os.close(devnull)
+        os.isatty(stdout.fileno())
+    except (AttributeError, OSError, TypeError, ValueError):
+        return True
+    return False
+
+
+def _disable_parser_color(
+    parser: ArgumentParser,
+    formatter_cls: Callable[..., object] = RawDescriptionHelpFormatter,
+) -> None:
+    # Python 3.14+ ArgumentParser(color=...) and Python 3.14 HelpFormatter(color=...) probe sys.stdout via _colorize.
+    parser_vars = vars(parser)
+    if "color" in parser_vars:
+        parser_vars["color"] = False
+    init_code = getattr(getattr(formatter_cls, "__init__", None), "__code__", None)
+    if init_code is not None and "color" in init_code.co_varnames:
+        parser_vars["formatter_class"] = partial(formatter_cls, color=False)
+
+
+def _redirect_stdout_to_devnull(stdout: TextIO) -> None:
+    with suppress(AttributeError, OSError, ValueError):
+        stdout_fd = stdout.fileno()
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(devnull, stdout_fd)
+            stdout.flush()
+        finally:
+            os.close(devnull)
+
+
+def _write_lines(lines: Iterable[str]) -> bool:
+    stdout = sys.stdout
+    if stdout is None:
+        return False
+    for line in lines:
+        try:
+            stdout.write(line)
+        except (OSError, ValueError) as exc:
+            if not _is_closed_stream_error(exc):
+                raise
+            _redirect_stdout_to_devnull(stdout)
+            return False
+    try:
+        stdout.flush()
+    except (OSError, ValueError) as exc:
+        if not _is_closed_stream_error(exc):
+            raise
+        _redirect_stdout_to_devnull(stdout)
+        return False
+    return True
+
+
+class _HelpAction(Action):
+    def __call__(
+        self: _HelpAction,
+        parser: ArgumentParser,
+        namespace: Namespace,
+        values: object,
+        option_string: str | None = None,
+    ) -> None:
+        """Print help message to stdout and exit."""
+        del namespace, values, option_string
+        _write_lines((parser.format_help(),))
+        parser.exit(0)
 
 
 class _VersionAction(Action):
@@ -117,13 +181,24 @@ def _build_parser() -> ArgumentParser:
             "  cuid2 -n 5 | cuid2 --check -"
         ),
         formatter_class=RawDescriptionHelpFormatter,
+        add_help=False,
     )
+    if _stdout_cannot_probe_color(sys.stdout):
+        _disable_parser_color(parser)
     parser.add_argument(
         "length",
         nargs="?",
         type=_parse_length,
         default=None,
         help=_LENGTH_HELP,
+    )
+    parser.add_argument(
+        "-h",
+        "--help",
+        action=_HelpAction,
+        nargs=0,
+        default=SUPPRESS,
+        help="Show this help message and exit.",
     )
     parser.add_argument(
         "-V",
@@ -205,8 +280,15 @@ def _iter_candidates(check_arg: str) -> Iterator[str]:
     if check_arg != "-":
         yield check_arg
         return
+    stdin = sys.stdin
+    if stdin is None:
+        msg = "stdin is closed"
+        raise ValueError(msg)
+    if isinstance(stdin, io.TextIOWrapper):
+        with suppress(io.UnsupportedOperation):
+            stdin.reconfigure(encoding="utf-8", errors="surrogateescape")
     empty = True
-    for line in sys.stdin:
+    for line in stdin:
         candidate = line.rstrip("\r\n")
         if candidate:
             empty = False
@@ -223,18 +305,28 @@ def _run_check(check_arg: str, target_length: int | None, *, quiet: bool) -> int
 
     def _evaluate() -> Iterator[str]:
         nonlocal all_valid, exhausted
-        for candidate in _iter_candidates(check_arg):
-            valid = is_cuid(candidate, min_length=min_len, max_length=max_len)
-            all_valid = all_valid and valid
-            if not quiet:
-                # ascii() escapes control and non-ASCII characters from untrusted input.
-                label = ascii(candidate)[1:-1] if candidate else "<empty>"
-                yield f"{label}: {'valid' if valid else 'invalid'}\n"
-        exhausted = True
+        try:
+            for candidate in _iter_candidates(check_arg):
+                valid = is_cuid(candidate, min_length=min_len, max_length=max_len)
+                all_valid = all_valid and valid
+                if not quiet:
+                    # ascii() escapes control, non-ASCII, and surrogate-escaped bytes from untrusted input.
+                    label = ascii(candidate)[1:-1] if candidate else "<empty>"
+                    yield f"{label}: {'valid' if valid else 'invalid'}\n"
+            exhausted = True
+        except (OSError, ValueError) as exc:
+            # Only a closed or unreadable stdin (None, closed file, EBADF; UnicodeDecodeError is a ValueError)
+            # ends evaluation early; real I/O errors such as EIO propagate.
+            if not _is_closed_stream_error(exc):
+                raise
 
-    _write_lines(_evaluate())
-    # A closed stdout stops evaluation early; unchecked candidates must not count as valid.
-    return 0 if all_valid and exhausted else 1
+    if quiet:
+        any(_evaluate())
+        return 0 if all_valid and exhausted else 1
+
+    wrote = _write_lines(_evaluate())
+    # A closed stdin or stdout stops evaluation early; unchecked or unwritten candidates must not count as valid.
+    return 0 if all_valid and exhausted and wrote else 1
 
 
 def main(args: Sequence[str] | None = None) -> None:
