@@ -8,6 +8,8 @@ This repository continues the `overflowdigital` `cuid2` package (`b02c8ca`); ver
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-11-21
+
 ### Changed
 
 - `Cuid`, `Cuid.generate`, `create_id`, and `cuid_wrapper` now normalize integer-like `length` arguments via `operator.index` on validation, so objects implementing only `__index__` (without `__gt__` or `__add__`) are supported and `cuid_wrapper` binds a plain `int` in its `functools.partial` keywords.
@@ -145,7 +147,8 @@ Spans 49 commits since 2.0.1 over 2.5 years; the Python 3.8 drop (#24, merged 20
 - First release from this repository, refactored to the latest CUID2 spec (`1342a13`).
 - Internal: GitHub Actions workflow updates.
 
-[Unreleased]: https://github.com/gordon-code/cuid2/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/gordon-code/cuid2/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/gordon-code/cuid2/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/gordon-code/cuid2/compare/v2.3.0...v3.0.0
 [2.3.0]: https://github.com/gordon-code/cuid2/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/gordon-code/cuid2/compare/v2.2.0...v2.2.1
