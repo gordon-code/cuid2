@@ -642,7 +642,8 @@ class TestCli:
 
         class _PyNoColorFormatter:
             def __init__(self: _PyNoColorFormatter, prog: str) -> None:
-                self.prog = prog
+                color = prog.upper()  # a local named color must not count as a color parameter
+                self.prog = color.lower()
 
         class _ColorFormatter:
             def __init__(self: _ColorFormatter, prog: str, *, color: bool = True) -> None:

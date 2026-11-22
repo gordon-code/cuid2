@@ -50,7 +50,10 @@ def _disable_parser_color(
     if "color" in parser_vars:
         parser_vars["color"] = False
     init_code = getattr(getattr(formatter_cls, "__init__", None), "__code__", None)
-    if init_code is not None and "color" in init_code.co_varnames:
+    init_params = (
+        () if init_code is None else init_code.co_varnames[: init_code.co_argcount + init_code.co_kwonlyargcount]
+    )
+    if "color" in init_params:
         parser_vars["formatter_class"] = partial(formatter_cls, color=False)
 
 
