@@ -55,13 +55,18 @@ if TYPE_CHECKING:
 _CUID_REGEX: Final[re.Pattern[str]] = re.compile(r"^[a-z][0-9a-z]+\Z")
 
 
-def _validate_length(length: int) -> None:
-    """Validate that the requested CUID length is within supported bounds.
+def _validate_length(length: int) -> int:
+    """Validate and normalize the requested CUID length to a built-in integer.
 
     Parameters
     ----------
     length : int
         The requested CUID length to validate.
+
+    Returns
+    -------
+    int
+        The validated CUID length as a built-in ``int`` in ``MIN_LENGTH``..``BIG_LENGTH``.
 
     Raises
     ------
@@ -70,12 +75,14 @@ def _validate_length(length: int) -> None:
     TypeError
         If `length` is not an integer (a float, `Decimal`, `Fraction`, or string, for example).
     """
-    if isinstance(length, bool) or operator.index(length) < MIN_LENGTH:
+    resolved: int = operator.index(length)
+    if resolved < MIN_LENGTH:
         msg = f"Length must be at least {MIN_LENGTH} characters."
         raise ValueError(msg)
-    if length > BIG_LENGTH:
+    if resolved > BIG_LENGTH:
         msg = f"Length must never exceed {BIG_LENGTH} characters."
         raise ValueError(msg)
+    return resolved
 
 
 def is_cuid(cuid_str: str, min_length: int = MIN_LENGTH, max_length: int = BIG_LENGTH) -> bool:
@@ -198,12 +205,10 @@ class Cuid:
         attributes are deep-copied, and the random generator, counter, fingerprint, and (when one is used) lock are
         built anew.
         """
-        _validate_length(length)
-
+        self._length: int = _validate_length(length)
         self._random_generator: Callable[[], Random] = random_generator
         self._counter_factory: Callable[[int], Callable[[], int]] = counter
         self._fingerprint_factory: FingerprintCallable = fingerprint
-        self._length: int = length
         self._state: _GeneratorState = self._create_state(previous_random=None)
 
     def __deepcopy__(self: Cuid, memo: dict[int, object]) -> Cuid:
@@ -276,9 +281,7 @@ class Cuid:
         TypeError
             If the length parameter is not an integer.
         """
-        if length is not None:
-            _validate_length(length)
-        return self._generate(self._length if length is None else length)
+        return self._generate(self._length if length is None else _validate_length(length))
 
     def _generate(self: Cuid, resolved_length: int) -> str:
         state: _GeneratorState = self._current_state()
@@ -329,8 +332,7 @@ def create_id(length: int | None = None) -> str:
         If the length parameter is not an integer.
     """
     global _default_generator  # noqa: PLW0603
-    if length is not None:
-        _validate_length(length)
+    resolved_length: int = DEFAULT_LENGTH if length is None else _validate_length(length)
     generator = _default_generator
     if generator is None:
         with _process_lock(os.getpid()):
@@ -338,7 +340,7 @@ def create_id(length: int | None = None) -> str:
             if generator is None:
                 generator = Cuid()
                 _default_generator = generator
-    return generator._generate(DEFAULT_LENGTH if length is None else length)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    return generator._generate(resolved_length)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
 
 
 def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
@@ -363,5 +365,4 @@ def cuid_wrapper(length: int = DEFAULT_LENGTH) -> Callable[[], str]:
     TypeError
         If the length parameter is not an integer.
     """
-    _validate_length(length)
-    return partial(create_id, length=length)
+    return partial(create_id, length=_validate_length(length))

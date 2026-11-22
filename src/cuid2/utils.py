@@ -28,7 +28,6 @@ BASE36_RADIX: Final[int] = len(BASE36_ALPHABET)
 
 _OVERSAMPLE_BITS: Final[int] = 64
 _COUNTER_DRAW_BITS: Final[int] = INITIAL_COUNT_MAX.bit_length() + _OVERSAMPLE_BITS
-_LETTER_DRAW_BITS: Final[int] = ASCII_LOWERCASE_LEN.bit_length() + _OVERSAMPLE_BITS
 _POWERS_OF_36: Final[tuple[int, ...]] = tuple(BASE36_RADIX**i for i in range(101))
 _HASH_MIN_99_DIGITS: Final[int] = _POWERS_OF_36[98]
 _HASH_MIN_100_DIGITS: Final[int] = _POWERS_OF_36[99]
@@ -208,54 +207,6 @@ def create_entropy(random_generator: Random, length: int = 4) -> str:
     draw_bits: int = modulus.bit_length() + _OVERSAMPLE_BITS
     scaled: int = _scale_randbits(random_generator.getrandbits(draw_bits), modulus, draw_bits)
     return _entropy_from_scaled(scaled, length)
-
-
-def create_hash(data: str = "") -> str:
-    """Create a base36-encoded SHA3-512 hash of `data` with the leading character dropped.
-
-    Parameters
-    ----------
-    data : str, default=""
-        Data to be hashed. It is an optional parameter with a default value of an empty string.
-        If no value is provided for `data`, an empty string will be hashed.
-
-    Returns
-    -------
-    str
-        Base36 encoding of the SHA3-512 hash of the input string `data`, with the first character dropped.
-
-    """
-    hashed_value = sha3_512(data.encode())
-    hashed_int: int = int.from_bytes(hashed_value.digest(), byteorder="big")
-
-    # Drop the first character because it will bias the histogram to the left.
-    return base36_encode(hashed_int)[1:]
-
-
-def create_letter(random_generator: Random) -> str:
-    """Generate a random lowercase ASCII letter using the given random number generator.
-
-    Parameters
-    ----------
-    random_generator : random.Random
-        Random number generator used to generate a random letter. Its `.getrandbits(k)` is used; a generator
-        without `.getrandbits(k)`, or whose class defines `.random()` but not `.getrandbits(k)` (such as a
-        `random.Random` subclass overriding only `.random()`), is drawn from with one `.random()` call.
-
-    Returns
-    -------
-    str
-        a randomly generated lowercase letter from the English alphabet.
-    """
-    if _uses_random_only(random_generator):
-        return _letter_via_random(random_generator)
-    return ASCII_LOWERCASE[
-        _scale_randbits(
-            random_generator.getrandbits(_LETTER_DRAW_BITS),
-            ASCII_LOWERCASE_LEN,
-            _LETTER_DRAW_BITS,
-        )
-    ]
 
 
 def base36_encode(number: int) -> str:
