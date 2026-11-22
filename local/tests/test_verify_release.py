@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from local import verify_release
 from local.verify_release import (
     DEFAULT_CHANGELOG_PATH,
     DEFAULT_PYPROJECT_PATH,
@@ -693,3 +694,154 @@ class TestResolveReleaseCommit:
                 version="2.1.0",
                 prev_version=None,
             )
+
+    def test_resolve_release_commit_deleted_or_tableless_pyproject_history(self, tmp_path: Path) -> None:
+        deleted_repo = tmp_path / "deleted"
+        deleted_repo.mkdir()
+        deleted_pyproject = deleted_repo / "pyproject.toml"
+        _git(deleted_repo, "init", "-b", "main")
+        _write_lf(deleted_pyproject, '[project]\nname = "cuid2"\nversion = "2.0.4"\n')
+        _git(deleted_repo, "add", "pyproject.toml")
+        _git(deleted_repo, "commit", "-q", "-m", "chore: release 2.0.4")
+        _git(deleted_repo, "rm", "-q", "pyproject.toml")
+        _git(deleted_repo, "commit", "-q", "-m", "chore: drop pyproject")
+        _write_lf(deleted_pyproject, '[project]\nname = "cuid2"\nversion = "2.1.0"\n')
+        _git(deleted_repo, "add", "pyproject.toml")
+        _git(deleted_repo, "commit", "-q", "-m", "chore: release 2.1.0")
+        deleted_bump_sha = _git(deleted_repo, "rev-parse", "HEAD")
+        assert (
+            resolve_release_commit(deleted_repo, pyproject_path=deleted_pyproject, version="2.1.0", prev_version=None)
+            == deleted_bump_sha
+        )
+        with pytest.raises(ValueError, match=r"is absent, but CHANGELOG\.md lists previous release 2\.0\.4"):
+            resolve_release_commit(
+                deleted_repo, pyproject_path=deleted_pyproject, version="2.1.0", prev_version="2.0.4"
+            )
+
+        tableless_repo = tmp_path / "tableless"
+        tableless_repo.mkdir()
+        tableless_pyproject = tableless_repo / "pyproject.toml"
+        _git(tableless_repo, "init", "-b", "main")
+        _write_lf(tableless_pyproject, "[tool.example]\nkey = 1\n")
+        _git(tableless_repo, "add", "pyproject.toml")
+        _git(tableless_repo, "commit", "-q", "-m", "chore: tool config only")
+        _write_lf(tableless_pyproject, '[project]\nname = "cuid2"\nversion = "2.1.0"\n')
+        _git(tableless_repo, "add", "pyproject.toml")
+        _git(tableless_repo, "commit", "-q", "-m", "chore: release 2.1.0")
+        tableless_bump_sha = _git(tableless_repo, "rev-parse", "HEAD")
+        assert (
+            resolve_release_commit(
+                tableless_repo,
+                pyproject_path=tableless_pyproject,
+                version="2.1.0",
+                prev_version=None,
+            )
+            == tableless_bump_sha
+        )
+
+    def test_resolve_release_commit_git_command_failures(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        plain_dir = tmp_path / "plain"
+        plain_dir.mkdir()
+        _write_lf(plain_dir / "pyproject.toml", '[project]\nname = "cuid2"\nversion = "2.1.0"\n')
+        monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+        with pytest.raises(ValueError, match="Failed to query git repository history depth"):
+            resolve_release_commit(
+                plain_dir, pyproject_path=plain_dir / "pyproject.toml", version="2.1.0", prev_version=None
+            )
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _make_release_repo(repo)
+        real_run_git = verify_release._run_git
+        failure: dict[str, tuple[int, str]] = {}
+
+        def fake_run_git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+            if args[0] in failure:
+                returncode, stdout = failure[args[0]]
+                return subprocess.CompletedProcess(["git", *args], returncode, stdout=stdout, stderr="boom")
+            return real_run_git(repo_root, *args)
+
+        monkeypatch.setattr(verify_release, "_run_git", fake_run_git)
+        for subcommand, result, match in (
+            ("tag", (1, ""), "Failed to list git tags: boom"),
+            ("log", (1, ""), "Failed to inspect git history for pyproject.toml: boom"),
+            ("log", (0, "not-a-sha\n"), "Invalid commit SHA from git log: not-a-sha"),
+        ):
+            failure.clear()
+            failure[subcommand] = result
+            with pytest.raises(ValueError, match=match):
+                resolve_release_commit(
+                    repo, pyproject_path=repo / "pyproject.toml", version="2.1.0", prev_version="2.0.4"
+                )
+
+    def test_resolve_commit_prints_sha_without_github_output(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        release_sha = _make_release_repo(tmp_path)
+        pyproject = tmp_path / "pyproject.toml"
+        argv = ["changelog", "--pyproject", str(pyproject), "--changelog", str(tmp_path / "CHANGELOG.md")]
+        assert main([*argv, "--resolve-commit"]) == 0
+        captured = capsys.readouterr()
+        assert captured.out == f"{release_sha}\n"
+        assert captured.err == ""
+
+        with pytest.raises(ValueError, match=r"Invalid semantic version: 2\.1$"):
+            resolve_release_commit(tmp_path, pyproject_path=pyproject, version="2.1", prev_version=None)
+
+    def test_require_release_checkout(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        release_sha = _make_release_repo(tmp_path)
+        gh_out = tmp_path / "github-output.txt"
+        argv = [
+            "changelog",
+            "--pyproject",
+            str(tmp_path / "pyproject.toml"),
+            "--changelog",
+            str(tmp_path / "CHANGELOG.md"),
+            "--require-release-checkout",
+            "--github-output",
+            str(gh_out),
+        ]
+        monkeypatch.setenv("GITHUB_REF_NAME", "release/2.1.0")
+        monkeypatch.setenv("GITHUB_SHA", release_sha)
+        assert main(argv) == 0
+        assert capsys.readouterr().out == f"{release_sha}\n"
+        assert gh_out.read_text(encoding="utf-8") == f"version=2.1.0\ncommit={release_sha}\nlatest=true\n"
+        gh_out.unlink()
+
+        for ref_name, event_sha, expected_err in (
+            ("main", release_sha, "Workflow must be dispatched on release/2.1.0, got: 'main'"),
+            ("release/2.1.1", release_sha, "got: 'release/2.1.1'"),
+            ("release/2.1.0", "0" * 40, f"checked-out HEAD {release_sha}, and GITHUB_SHA {'0' * 40} must all match"),
+        ):
+            monkeypatch.setenv("GITHUB_REF_NAME", ref_name)
+            monkeypatch.setenv("GITHUB_SHA", event_sha)
+            assert main(argv) == 1
+            captured = capsys.readouterr()
+            assert captured.out == ""
+            assert expected_err in captured.err
+            assert not gh_out.exists()
+
+        _write_lf(tmp_path / "README.md", "# cuid2 later\n")
+        _git(tmp_path, "add", "README.md")
+        _git(tmp_path, "commit", "-q", "-m", "docs: later commit on the release branch")
+        later_sha = _git(tmp_path, "rev-parse", "HEAD")
+        monkeypatch.setenv("GITHUB_SHA", later_sha)
+        assert main(argv) == 1
+        assert f"Release commit {release_sha}, checked-out HEAD {later_sha}" in capsys.readouterr().err
+
+        monkeypatch.delenv("GITHUB_REF_NAME")
+        monkeypatch.delenv("GITHUB_SHA")
+        assert main(argv) == 1
+        assert "got: ''" in capsys.readouterr().err
+        assert not gh_out.exists()

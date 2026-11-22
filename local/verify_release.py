@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import itertools
+import os
 import re
 import shutil
 import subprocess
@@ -17,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 import keepachangelog
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PYPROJECT_PATH = _REPO_ROOT / "pyproject.toml"
@@ -464,6 +465,25 @@ def resolve_release_commit(
     )
 
 
+def _assert_release_checkout(repo_root: Path, *, version: str, commit: str, environ: Mapping[str, str]) -> None:
+    # The GitHub Actions run must be on release/<version> with the checked-out HEAD and GITHUB_SHA at the release
+    # commit, so the attested source digest, the built tree, and the tag target are one commit.
+    ref_name = environ.get("GITHUB_REF_NAME", "")
+    expected_ref = f"release/{version}"
+    if ref_name != expected_ref:
+        msg = f"Workflow must be dispatched on {expected_ref}, got: {ref_name!r}"
+        raise ValueError(msg)
+    head = _run_git(repo_root, "rev-parse", "HEAD")
+    head_sha = head.stdout.strip() if head.returncode == 0 else ""
+    event_sha = environ.get("GITHUB_SHA", "")
+    if head_sha != commit or event_sha != commit:
+        msg = (
+            f"Release commit {commit}, checked-out HEAD {head_sha or '<unknown>'}, "
+            f"and GITHUB_SHA {event_sha or '<unset>'} must all match"
+        )
+        raise ValueError(msg)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m local.verify_release",
@@ -507,6 +527,14 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Resolve and verify the release commit SHA and tag invariants, printing the SHA to stdout.",
     )
+    changelog_parser.add_argument(
+        "--require-release-checkout",
+        action="store_true",
+        help=(
+            "Implies --resolve-commit and also requires GITHUB_REF_NAME == release/<version> and the checked-out "
+            "HEAD and GITHUB_SHA to equal the resolved release commit (used by build_release.yml)."
+        ),
+    )
 
     dist_parser = subparsers.add_parser(
         "dist",
@@ -532,7 +560,7 @@ def _run_changelog_command(args: argparse.Namespace, *, version: str) -> None:
     notes = verify_and_extract_release_notes(args.changelog, version=version)
     commit_sha: str | None = None
     latest: bool | None = None
-    if args.resolve_commit:
+    if args.resolve_commit or args.require_release_checkout:
         release_keys = list(keepachangelog.to_dict(str(args.changelog), show_unreleased=True))
         prev_version = _previous_release_version(release_keys)
         repo_root = args.pyproject.resolve().parent
@@ -542,6 +570,8 @@ def _run_changelog_command(args: argparse.Namespace, *, version: str) -> None:
             version=version,
             prev_version=prev_version,
         )
+        if args.require_release_checkout:
+            _assert_release_checkout(repo_root, version=version, commit=commit_sha, environ=os.environ)
         latest = _is_latest_version(version, _list_version_tags(repo_root))
 
     if args.notes_out is not None:
