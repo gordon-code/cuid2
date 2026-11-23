@@ -1,5 +1,5 @@
 [build-system]
-requires = ["uv_build==0.13.5"]
+requires = ["uv_build==0.13.7"]
 build-backend = "uv_build"
 
 [project]
@@ -46,21 +46,21 @@ build = [
 ]
 lint = [
     "codespell==2.4.3",
-    "prek==0.5.7",
-    "ruff==0.17.0",
-    "rumdl==0.3.0",
-    "zizmor==1.31.1",
+    "prek==0.5.10",
+    "ruff==0.17.4",
+    "rumdl==0.3.2",
+    "zizmor==1.32.0",
 ]
 test = [
-    "coverage[toml]==7.16.2",
-    "hypothesis==6.170.5",
+    "coverage[toml]==7.17.2",
+    "hypothesis==6.170.15",
     "keepachangelog==2.0.0",
-    "pytest==9.1.1",
+    "pytest==9.2.0",
     "pytest-cov==7.1.0",
-    "pytest-mock==3.16.0",
+    "pytest-mock==3.17.0",
 ]
 typing = [
-    "mypy==2.4.0",
+    "mypy==2.4.1",
     "pyright[nodejs]==1.1.414",
 ]
 
